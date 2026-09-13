@@ -1,24 +1,26 @@
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::models::Role;
 
-const SESSION_LIFETIME_DAYS: i64 = 30;
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: Uuid,
+    pub jti: Uuid,
     pub role: Role,
     pub exp: i64,
 }
 
-pub fn issue(user_id: Uuid, role: Role, secret: &str) -> String {
+/// `jti` and `expires_at` come from a `sessions` row (see `auth::session`),
+/// so the JWT's lifetime always matches a record we can revoke server-side.
+pub fn issue(user_id: Uuid, role: Role, jti: Uuid, expires_at: DateTime<Utc>, secret: &str) -> String {
     let claims = Claims {
         sub: user_id,
+        jti,
         role,
-        exp: (Utc::now() + Duration::days(SESSION_LIFETIME_DAYS)).timestamp(),
+        exp: expires_at.timestamp(),
     };
 
     encode(

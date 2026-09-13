@@ -1,3 +1,4 @@
+mod audit;
 mod auth;
 mod config;
 mod error;
@@ -53,6 +54,7 @@ async fn main() {
         db,
         config,
         oauth_client,
+        http_client: reqwest::Client::new(),
         pending_logins: Mutex::new(std::collections::HashMap::new()),
     });
 

@@ -9,6 +9,9 @@ pub struct Config {
     pub google_redirect_url: String,
     pub frontend_url: String,
     pub port: u16,
+    /// Whether session cookies get the `Secure` flag (HTTPS-only). Defaults
+    /// to `true` — set `COOKIE_SECURE=false` only for local HTTP development.
+    pub cookie_secure: bool,
 }
 
 impl Config {
@@ -26,6 +29,9 @@ impl Config {
                 .unwrap_or_else(|_| "8080".to_string())
                 .parse()
                 .expect("PORT must be a valid number"),
+            cookie_secure: env::var("COOKIE_SECURE")
+                .map(|v| v != "false")
+                .unwrap_or(true),
         }
     }
 }

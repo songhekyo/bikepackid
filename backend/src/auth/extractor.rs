@@ -3,7 +3,7 @@ use axum_extra::extract::CookieJar;
 
 use crate::{error::AppError, models::User, state::SharedState};
 
-use super::jwt;
+use super::{jwt, session};
 
 pub const SESSION_COOKIE: &str = "session";
 
@@ -27,6 +27,12 @@ impl FromRequestParts<SharedState> for AuthUser {
             .ok_or(AppError::Unauthorized)?;
 
         let claims = jwt::verify(&token, &state.config.jwt_secret).ok_or(AppError::Unauthorized)?;
+
+        // The JWT signature and `exp` being valid isn't enough — a session
+        // can be revoked (logout, ban) before the token itself expires.
+        if !session::is_valid(&state.db, claims.jti).await? {
+            return Err(AppError::Unauthorized);
+        }
 
         let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
             .bind(claims.sub)
