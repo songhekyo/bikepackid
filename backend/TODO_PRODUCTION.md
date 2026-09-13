@@ -10,7 +10,7 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 - [ ] **Rate limiting** di endpoint `/auth/google/login` dan `/auth/google/callback` — belum ada. Tanpa ini endpoint auth rawan disalahgunakan buat spam/DoS ringan (walau `pending_logins` sudah di-sweep otomatis, tetap perlu limit di level request).
 - [ ] **Backup database** — belum ada strategi. Minimal: automated daily backup dari provider Postgres yang dipakai (Supabase/Neon/RDS biasanya punya built-in).
 - [ ] **Sambungkan `OTEL_EXPORTER_OTLP_ENDPOINT` ke collector production** — kode-nya sudah siap (lihat bagian Observability di README), tinggal pilih & deploy tujuan (OpenTelemetry Collector, Kibana/Elastic APM, Datadog, Grafana Tempo, dst) dan set env var-nya. Tanpa ini trace tidak kemana-mana (cuma log stdout).
-- [ ] **Alerting** — belum ada. Setelah log/trace kekirim ke collector pilihan, set alert minimal buat: error rate naik, server down/health check gagal, latency p99 endpoint auth melonjak.
+- [ ] **Alerting** — belum ada. `/health` (ping database) sudah ada buat dipakai orkestrator/load balancer, tapi belum ada yang mengirim alert kalau itu gagal. Setelah log/trace kekirim ke collector pilihan, set alert minimal buat: error rate naik, health check gagal, latency p99 endpoint auth melonjak.
 
 ## Penting, tapi bisa menyusul cepat setelah live
 
@@ -39,3 +39,13 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 - [x] Request ID per request (`x-request-id`, auto-generate, ikut di response header & semua log/span request itu).
 - [x] Log terstruktur (JSON via `LOG_FORMAT=json`) + tiap request otomatis ke-log (method/path/status/latency).
 - [x] Wiring OpenTelemetry/OTLP trace export (vendor-neutral) — tinggal arahkan `OTEL_EXPORTER_OTLP_ENDPOINT` ke collector pilihan saat production (lihat poin "Wajib" di atas).
+- [x] `/health` — readiness check yang nge-ping database beneran, bukan 200 statis.
+- [x] Graceful shutdown (SIGTERM/Ctrl+C) — request yang sedang jalan diselesaikan dulu, baru trace OTel di-flush, sebelum proses keluar.
+- [x] HTTP client ke Google punya timeout (`connect_timeout` 5s, `timeout` 10s) — sebelumnya `reqwest::Client::new()` default tanpa timeout sama sekali, request bisa menggantung selamanya kalau Google lambat/hang.
+- [x] Baris `sessions` yang sudah revoked/expired dibersihkan otomatis (background task tiap 6 jam) — sebelumnya tabel `sessions` tidak pernah dibersihkan sama sekali.
+- [x] `AuthUser` extractor sekarang satu query yang sekaligus memverifikasi sesi itu benar-benar milik user di klaim JWT (bukan dua query terpisah yang implisit saling percaya).
+- [x] User yang cancel di consent screen Google (`error=access_denied`) di-redirect halus ke frontend, bukan 400 mentah dengan pesan deserialisasi.
+- [x] Error "percobaan login kedaluwarsa/tidak dikenal" sekarang 400 (kesalahan klien), terpisah dari error Google beneran down yang tetap 502 — sebelumnya keduanya dilaporkan sama.
+- [x] `users.email` tidak lagi `UNIQUE` (migrasi 0004) — email yang didaur ulang antar akun Google berbeda tidak lagi bikin login gagal 500.
+- [x] Masa berlaku cookie sesi diturunkan dari `expires_at` baris `sessions` (bukan konstanta terpisah yang bisa mencle dari nilai di database).
+- [x] CORS mengizinkan header `Content-Type` — sebelumnya preflight buat request JSON (POST) akan gagal.

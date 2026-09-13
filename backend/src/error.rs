@@ -13,6 +13,9 @@ pub enum AppError {
     #[error("google oauth error: {0}")]
     Oauth(String),
 
+    #[error("bad request: {0}")]
+    BadRequest(String),
+
     #[error("unauthorized")]
     Unauthorized,
 
@@ -32,6 +35,10 @@ impl IntoResponse for AppError {
             AppError::Oauth(msg) => {
                 tracing::error!(%msg, "oauth error");
                 (StatusCode::BAD_GATEWAY, "google login failed".to_string())
+            }
+            AppError::BadRequest(msg) => {
+                tracing::info!(%msg, "bad request");
+                (StatusCode::BAD_REQUEST, msg.clone())
             }
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized".to_string()),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "forbidden".to_string()),

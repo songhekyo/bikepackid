@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod health;
 pub mod me;
 
 use axum::{
@@ -10,6 +11,7 @@ use crate::state::SharedState;
 
 pub fn router() -> Router<SharedState> {
     Router::new()
+        .route("/health", get(health::health))
         .route("/auth/google/login", get(auth::google_login))
         .route("/auth/google/callback", get(auth::google_callback))
         .route("/auth/logout", post(auth::logout))

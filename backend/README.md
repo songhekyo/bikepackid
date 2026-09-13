@@ -17,7 +17,7 @@ Konteks desain sistem secara keseluruhan (roadmap, entity yang belum diimplement
 Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvensi umum di Rust — bukan folder `tests/` terpisah karena crate ini binary, bukan library), plus helper bersama di `src/test_support.rs`.
 
 - **Unit test murni** (tanpa DB): `auth/jwt.rs` (token valid/salah secret/expired), `models/user.rs` (`Role::can_use_app`), `config.rs` (parsing `COOKIE_SECURE`).
-- **Test terhadap database asli**: `auth/session.rs` (create/revoke), `audit.rs` (log tersimpan).
+- **Test terhadap database asli**: `auth/session.rs` (create/revoke/authenticate, termasuk memastikan sesi tidak bisa dipakai buat autentikasi sebagai user lain), `audit.rs` (log tersimpan).
 - **Test end-to-end lewat router** (`routes/mod.rs`, pakai `tower::ServiceExt::oneshot`, tanpa buka port beneran): `/me` tanpa cookie → 401, dengan cookie valid → 200, dengan session yang sudah di-revoke → 401 lagi; `/app/status` → 403 untuk `viewer`, 200 untuk `creator`.
 
 ## Struktur
@@ -26,11 +26,12 @@ Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvens
 - `src/models/user.rs` — struct `User` & enum `Role` (`viewer`/`creator`/`moderator`/`admin`/`superadmin`).
 - `src/auth/google.rs` — client OAuth2 & fetch profil dari Google.
 - `src/auth/jwt.rs` — issue/verify session token (JWT, disimpan di cookie httpOnly).
-- `src/auth/session.rs` — session store di database (dipakai buat revoke token saat logout/ban, JWT sendiri tidak bisa dicabut).
-- `src/auth/extractor.rs` — `AuthUser`, dipakai di handler untuk mewajibkan login; juga cek sesi belum di-revoke.
+- `src/auth/session.rs` — session store di database (revoke saat logout/ban, `authenticate` buat load user + validasi sesi dalam satu query, `purge_expired` buat dipanggil job pembersih).
+- `src/auth/extractor.rs` — `AuthUser`, dipakai di handler untuk mewajibkan login; satu query yang sekaligus cek sesi belum di-revoke/expired dan memverifikasi sesi itu benar milik user di klaim JWT.
 - `src/audit.rs` — catat event keamanan (login/logout, dst) ke tabel `audit_logs`.
-- `src/routes/auth.rs` — `/auth/google/login`, `/auth/google/callback`, `/auth/logout`.
+- `src/routes/auth.rs` — `/auth/google/login`, `/auth/google/callback` (termasuk redirect halus kalau user cancel di consent screen Google), `/auth/logout`.
 - `src/routes/me.rs` — `/me` (semua role login), `/app/status` (contoh route khusus `creator` ke atas).
+- `src/routes/health.rs` — `/health`, readiness check yang benar-benar nge-ping database.
 - `src/telemetry.rs` — setup logging + (opsional) export trace OpenTelemetry.
 
 ## Observability
@@ -43,16 +44,25 @@ Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvens
 
 ## Keamanan
 
-- Session token (JWT) disimpan di cookie `httpOnly`, `SameSite=Lax`, dan `Secure` (kecuali di-override lewat `COOKIE_SECURE=false` untuk dev lokal).
-- Setiap token terikat ke baris `sessions` di database (`jti` claim) — logout/ban benar-benar mencabut akses, tidak cuma menghapus cookie di sisi client.
-- Percobaan login yang tidak selesai (`pending_logins`, in-memory) otomatis dibersihkan setelah 10 menit supaya tidak numpuk di memori.
-- Event login/logout tercatat di `audit_logs`.
+- Session token (JWT) disimpan di cookie `httpOnly`, `SameSite=Lax`, dan `Secure` (kecuali di-override lewat `COOKIE_SECURE=false` untuk dev lokal). Masa berlaku cookie diturunkan langsung dari `expires_at` baris `sessions` (bukan konstanta terpisah yang bisa mencle dari yang di database).
+- Setiap token terikat ke baris `sessions` di database (`jti` claim) — logout/ban benar-benar mencabut akses, tidak cuma menghapus cookie di sisi client. `AuthUser` extractor memverifikasi sesi itu milik user yang diklaim JWT (bukan cuma "sesi ini valid"), dalam satu query (`session::authenticate`).
+- Percobaan login yang tidak selesai (`pending_logins`, in-memory) otomatis dibersihkan setelah 10 menit supaya tidak numpuk di memori. User yang cancel di consent screen Google (`error=access_denied`) di-redirect halus ke frontend, bukan dilempar error.
+- Event login/logout tercatat di `audit_logs`; kegagalan menulis log itu sendiri tidak silent — masuk `tracing::error!`.
+- Baris `sessions` yang sudah revoked/expired lebih dari 7 hari dibersihkan otomatis oleh background task (`spawn_session_purge_task`, jalan tiap 6 jam) — tabel tidak tumbuh tanpa batas.
+- HTTP client (ke Google) punya timeout eksplisit (`connect_timeout` 5s, `timeout` 10s) — Google lambat/hang tidak bisa menggantung request selamanya.
+- Constraint `UNIQUE` di `users.email` sudah dilonggarkan jadi index biasa (migrasi 0004) — `google_id` (Google `sub`) yang jadi identitas asli; email yang didaur ulang antar akun Google berbeda tidak lagi bikin login gagal 500.
 - `cargo audit` bersih; satu pengecualian terdokumentasi di `.cargo/audit.toml` (RUSTSEC-2023-0071, `rsa` crate — terkunci di `Cargo.lock` sebagai kemungkinan dependency dari fitur `mysql` milik `sqlx-macros-core`, tapi tidak pernah benar-benar ter-compile karena kita cuma pakai fitur `postgres`; belum ada versi perbaikan dari upstream).
+
+## Operasional
+
+- **Graceful shutdown**: server menangkap Ctrl+C/SIGTERM, membiarkan request yang sedang jalan selesai sebelum proses keluar, baru setelah itu flush trace OTel yang masih ke-buffer.
+- **`/health`** benar-benar nge-ping database (`SELECT 1`), bukan cuma return 200 statis — cocok buat readiness probe di Railway/Render/Fly/k8s.
 
 ## Endpoint
 
 | Method | Path | Auth | Keterangan |
 |---|---|---|---|
+| GET | `/health` | - | readiness check (ping database) |
 | GET | `/auth/google/login` | - | redirect ke halaman login Google |
 | GET | `/auth/google/callback` | - | tukar `code` dari Google, upsert user, set cookie sesi |
 | POST | `/auth/logout` | - | hapus cookie sesi |

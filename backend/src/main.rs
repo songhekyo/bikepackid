@@ -12,7 +12,7 @@ mod telemetry;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use axum::http::{HeaderName, HeaderValue, Method, Request, Response};
+use axum::http::{header::CONTENT_TYPE, HeaderName, HeaderValue, Method, Request, Response};
 use sqlx::postgres::PgPoolOptions;
 use tower_http::{
     cors::CorsLayer,
@@ -24,6 +24,7 @@ use tracing::field;
 use crate::{config::Config, state::AppState};
 
 const REQUEST_ID_HEADER: &str = "x-request-id";
+const SESSION_PURGE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 
 #[tokio::main]
 async fn main() {
@@ -49,6 +50,15 @@ async fn main() {
         &config.google_redirect_url,
     );
 
+    // No timeout is reqwest's default, which means a slow/hanging Google
+    // (or a network partition) would let a `google_callback` request hang
+    // forever, tying up a connection with nothing to time it out.
+    let http_client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("failed to build HTTP client");
+
     let cors = CorsLayer::new()
         .allow_origin(
             config
@@ -57,17 +67,20 @@ async fn main() {
                 .expect("FRONTEND_URL must be a valid origin"),
         )
         .allow_methods([Method::GET, Method::POST])
+        .allow_headers([CONTENT_TYPE])
         .allow_credentials(true);
 
     let port = config.port;
 
     let state = Arc::new(AppState {
-        db,
+        db: db.clone(),
         config,
         oauth_client,
-        http_client: reqwest::Client::new(),
+        http_client,
         pending_logins: Mutex::new(std::collections::HashMap::new()),
     });
+
+    spawn_session_purge_task(db);
 
     let request_id_header = HeaderName::from_static(REQUEST_ID_HEADER);
 
@@ -122,7 +135,60 @@ async fn main() {
         .expect("failed to bind port");
 
     tracing::info!("bikepackid backend listening on port {port}");
-    axum::serve(listener, app).await.expect("server error");
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .expect("server error");
 
     telemetry.shutdown();
+}
+
+/// Waits for Ctrl+C or SIGTERM (the signal a container platform sends on
+/// deploy/restart). `axum::serve`'s graceful shutdown then lets in-flight
+/// requests finish before the process exits, and — the reason this exists
+/// at all — makes `telemetry.shutdown()` after `axum::serve(...).await`
+/// actually reachable, instead of dead code that never runs because
+/// `axum::serve` otherwise only returns on error.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("shutdown signal received, draining in-flight requests");
+}
+
+/// Session rows are never deleted anywhere else (`revoke` just marks them
+/// revoked, for the audit trail), so without this the table only grows.
+/// Fire-and-forget: if the process exits mid-cycle, nothing is lost since
+/// this only ever deletes rows that are already useless.
+fn spawn_session_purge_task(db: sqlx::PgPool) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(SESSION_PURGE_INTERVAL);
+        loop {
+            interval.tick().await;
+            match auth::session::purge_expired(&db).await {
+                Ok(0) => {}
+                Ok(count) => tracing::info!(count, "purged expired sessions"),
+                Err(err) => tracing::error!(?err, "failed to purge expired sessions"),
+            }
+        }
+    });
 }
