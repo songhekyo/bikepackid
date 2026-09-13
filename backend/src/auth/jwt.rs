@@ -40,3 +40,49 @@ pub fn verify(token: &str, secret: &str) -> Option<Claims> {
     .map(|data| data.claims)
     .ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Duration;
+
+    #[test]
+    fn valid_token_round_trips() {
+        let user_id = Uuid::new_v4();
+        let session_id = Uuid::new_v4();
+        let expires_at = Utc::now() + Duration::days(1);
+
+        let token = issue(user_id, Role::Creator, session_id, expires_at, "test-secret");
+        let claims = verify(&token, "test-secret").expect("token should verify");
+
+        assert_eq!(claims.sub, user_id);
+        assert_eq!(claims.jti, session_id);
+        assert_eq!(claims.role, Role::Creator);
+    }
+
+    #[test]
+    fn token_signed_with_a_different_secret_is_rejected() {
+        let token = issue(
+            Uuid::new_v4(),
+            Role::Viewer,
+            Uuid::new_v4(),
+            Utc::now() + Duration::days(1),
+            "secret-a",
+        );
+
+        assert!(verify(&token, "secret-b").is_none());
+    }
+
+    #[test]
+    fn expired_token_is_rejected() {
+        let token = issue(
+            Uuid::new_v4(),
+            Role::Viewer,
+            Uuid::new_v4(),
+            Utc::now() - Duration::days(1),
+            "test-secret",
+        );
+
+        assert!(verify(&token, "test-secret").is_none());
+    }
+}

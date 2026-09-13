@@ -31,3 +31,17 @@ pub struct User {
     pub role: Role,
     pub created_at: DateTime<Utc>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_viewer_is_blocked_from_the_app() {
+        assert!(!Role::Viewer.can_use_app());
+        assert!(Role::Creator.can_use_app());
+        assert!(Role::Moderator.can_use_app());
+        assert!(Role::Admin.can_use_app());
+        assert!(Role::Superadmin.can_use_app());
+    }
+}

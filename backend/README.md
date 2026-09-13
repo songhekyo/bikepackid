@@ -2,13 +2,23 @@
 
 Sistem User: login via Google OAuth, role-based access (web vs app).
 
+Konteks desain sistem secara keseluruhan (roadmap, entity yang belum diimplementasikan seperti Journey/Checkpoint/marketplace) ada di [`docs/SYSTEM_DESIGN.md`](../docs/SYSTEM_DESIGN.md). Checklist sebelum production ada di [`TODO_PRODUCTION.md`](./TODO_PRODUCTION.md).
+
 ## Jalankan lokal
 
 1. Pastikan Postgres jalan, lalu buat database & user sesuai `DATABASE_URL` di `.env`.
 2. Salin `.env.example` ke `.env` dan isi kredensial Google OAuth (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) dari [Google Cloud Console](https://console.cloud.google.com/apis/credentials). Set `COOKIE_SECURE=false` hanya untuk dev lokal via HTTP — **wajib** `true` (atau dihapus, karena defaultnya `true`) di production.
 3. `cargo run` — migrasi di `migrations/` jalan otomatis saat start.
-4. `cargo test` — jalankan test (butuh koneksi ke database yang sama seperti `DATABASE_URL`).
+4. `cargo test` — jalankan test (butuh koneksi ke database yang sama seperti `DATABASE_URL`; test bikin & hapus baris sendiri, aman dijalankan berulang).
 5. `cargo audit` — scan kerentanan dependency (pengecualian yang didokumentasikan ada di `.cargo/audit.toml`).
+
+## Testing
+
+Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvensi umum di Rust — bukan folder `tests/` terpisah karena crate ini binary, bukan library), plus helper bersama di `src/test_support.rs`.
+
+- **Unit test murni** (tanpa DB): `auth/jwt.rs` (token valid/salah secret/expired), `models/user.rs` (`Role::can_use_app`), `config.rs` (parsing `COOKIE_SECURE`).
+- **Test terhadap database asli**: `auth/session.rs` (create/revoke), `audit.rs` (log tersimpan).
+- **Test end-to-end lewat router** (`routes/mod.rs`, pakai `tower::ServiceExt::oneshot`, tanpa buka port beneran): `/me` tanpa cookie → 401, dengan cookie valid → 200, dengan session yang sudah di-revoke → 401 lagi; `/app/status` → 403 untuk `viewer`, 200 untuk `creator`.
 
 ## Struktur
 

@@ -49,63 +49,50 @@ pub async fn revoke(pool: &PgPool, session_id: Uuid) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    async fn test_pool() -> PgPool {
-        dotenvy::dotenv().ok();
-        let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set to run tests");
-        PgPool::connect(&url)
-            .await
-            .expect("failed to connect to test database")
-    }
-
-    async fn insert_test_user(pool: &PgPool) -> Uuid {
-        sqlx::query_scalar(
-            "INSERT INTO users (google_id, email, name) VALUES ($1, $2, $3) RETURNING id",
-        )
-        .bind(format!("test-{}", Uuid::new_v4()))
-        .bind(format!("{}@example.com", Uuid::new_v4()))
-        .bind("Test User")
-        .fetch_one(pool)
-        .await
-        .expect("failed to insert test user")
-    }
+    use crate::test_support;
 
     #[tokio::test]
     async fn fresh_session_is_valid() {
-        let pool = test_pool().await;
-        let user_id = insert_test_user(&pool).await;
+        let pool = test_support::pool().await;
+        let user_id = test_support::insert_user(&pool).await;
 
         let (session_id, _expires_at) = create(&pool, user_id).await.unwrap();
 
         assert!(is_valid(&pool, session_id).await.unwrap());
 
-        sqlx::query("DELETE FROM users WHERE id = $1")
-            .bind(user_id)
-            .execute(&pool)
-            .await
-            .ok();
+        test_support::delete_user(&pool, user_id).await;
     }
 
     #[tokio::test]
     async fn revoked_session_is_no_longer_valid() {
-        let pool = test_pool().await;
-        let user_id = insert_test_user(&pool).await;
+        let pool = test_support::pool().await;
+        let user_id = test_support::insert_user(&pool).await;
 
         let (session_id, _expires_at) = create(&pool, user_id).await.unwrap();
         revoke(&pool, session_id).await.unwrap();
 
         assert!(!is_valid(&pool, session_id).await.unwrap());
 
-        sqlx::query("DELETE FROM users WHERE id = $1")
-            .bind(user_id)
-            .execute(&pool)
-            .await
-            .ok();
+        test_support::delete_user(&pool, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn revoking_twice_does_not_error() {
+        let pool = test_support::pool().await;
+        let user_id = test_support::insert_user(&pool).await;
+
+        let (session_id, _expires_at) = create(&pool, user_id).await.unwrap();
+        revoke(&pool, session_id).await.unwrap();
+        revoke(&pool, session_id).await.unwrap();
+
+        assert!(!is_valid(&pool, session_id).await.unwrap());
+
+        test_support::delete_user(&pool, user_id).await;
     }
 
     #[tokio::test]
     async fn unknown_session_is_not_valid() {
-        let pool = test_pool().await;
+        let pool = test_support::pool().await;
 
         assert!(!is_valid(&pool, Uuid::new_v4()).await.unwrap());
     }

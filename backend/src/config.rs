@@ -29,9 +29,32 @@ impl Config {
                 .unwrap_or_else(|_| "8080".to_string())
                 .parse()
                 .expect("PORT must be a valid number"),
-            cookie_secure: env::var("COOKIE_SECURE")
-                .map(|v| v != "false")
-                .unwrap_or(true),
+            cookie_secure: Self::parse_cookie_secure(env::var("COOKIE_SECURE").ok()),
         }
+    }
+
+    /// Pulled out of `from_env` so this rule (default `true`; only an
+    /// explicit `"false"` opts out) can be unit-tested without mutating
+    /// real process env vars, which is process-global and flaky under
+    /// parallel test execution.
+    fn parse_cookie_secure(value: Option<String>) -> bool {
+        value.map(|v| v != "false").unwrap_or(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cookie_secure_defaults_to_true_when_unset() {
+        assert!(Config::parse_cookie_secure(None));
+    }
+
+    #[test]
+    fn cookie_secure_is_false_only_when_explicitly_set_to_false() {
+        assert!(!Config::parse_cookie_secure(Some("false".to_string())));
+        assert!(Config::parse_cookie_secure(Some("true".to_string())));
+        assert!(Config::parse_cookie_secure(Some("".to_string())));
     }
 }
