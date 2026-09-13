@@ -18,7 +18,7 @@ Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvens
 
 - **Unit test murni** (tanpa DB): `auth/jwt.rs` (token valid/salah secret/expired), `models/user.rs` (`Role::can_use_app`), `config.rs` (parsing `COOKIE_SECURE`).
 - **Test terhadap database asli**: `auth/session.rs` (create/revoke/authenticate, termasuk memastikan sesi tidak bisa dipakai buat autentikasi sebagai user lain), `audit.rs` (log tersimpan).
-- **Test end-to-end lewat router** (`routes/mod.rs`, pakai `tower::ServiceExt::oneshot`, tanpa buka port beneran): `/me` tanpa cookie → 401, dengan cookie valid → 200, dengan session yang sudah di-revoke → 401 lagi; `/app/status` → 403 untuk `viewer`, 200 untuk `creator`.
+- **Test end-to-end lewat router** (`routes/mod.rs`, pakai `tower::ServiceExt::oneshot`, tanpa buka port beneran): `/me` tanpa cookie → 401, dengan cookie valid → 200, dengan session yang sudah di-revoke → 401 lagi; `/app/status` → 403 untuk `viewer`, 200 untuk `creator`; `/auth/google/login` → 5 request pertama dari 1 IP (disimulasikan lewat header `x-forwarded-for`) lolos, ke-6 kena 429, IP lain dapat kuota sendiri.
 
 ## Struktur
 
@@ -51,6 +51,7 @@ Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvens
 - Baris `sessions` yang sudah revoked/expired lebih dari 7 hari dibersihkan otomatis oleh background task (`spawn_session_purge_task`, jalan tiap 6 jam) — tabel tidak tumbuh tanpa batas.
 - HTTP client (ke Google) punya timeout eksplisit (`connect_timeout` 5s, `timeout` 10s) — Google lambat/hang tidak bisa menggantung request selamanya.
 - Constraint `UNIQUE` di `users.email` sudah dilonggarkan jadi index biasa (migrasi 0004) — `google_id` (Google `sub`) yang jadi identitas asli; email yang didaur ulang antar akun Google berbeda tidak lagi bikin login gagal 500.
+- **Rate limiting** di `/auth/google/login` dan `/auth/google/callback` (`tower_governor`): burst 5 request per IP, replenish 1 tiap 2 detik, lewat 429. Key IP diambil dari header `x-forwarded-for`/`x-real-ip`/`forwarded` (buat di belakang reverse proxy — Railway/Render/Fly semua set ini), fallback ke peer address asli kalau tidak ada proxy. **Penting**: header IP itu cuma boleh dipercaya kalau proxy di depannya yang men-set (dan men-strip nilai dari klien) — jangan expose server ini langsung ke internet tanpa proxy. In-memory per-instance, sama seperti `pending_logins` (lihat `TODO_PRODUCTION.md`).
 - `cargo audit` bersih; satu pengecualian terdokumentasi di `.cargo/audit.toml` (RUSTSEC-2023-0071, `rsa` crate — terkunci di `Cargo.lock` sebagai kemungkinan dependency dari fitur `mysql` milik `sqlx-macros-core`, tapi tidak pernah benar-benar ter-compile karena kita cuma pakai fitur `postgres`; belum ada versi perbaikan dari upstream).
 
 ## Operasional

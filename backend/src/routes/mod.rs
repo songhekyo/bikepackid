@@ -6,14 +6,43 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use tower_governor::{governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor, GovernorLayer};
 
 use crate::state::SharedState;
 
 pub fn router() -> Router<SharedState> {
-    Router::new()
-        .route("/health", get(health::health))
+    // Bursts of 5 requests per IP, replenishing one every 2 seconds.
+    // Scoped to just the Google OAuth endpoints — the only unauthenticated
+    // routes worth protecting; /health needs to stay reachable for
+    // liveness probes, and /me and /app/status already require a valid
+    // session, which is self-limiting.
+    //
+    // SmartIpKeyExtractor reads x-forwarded-for/x-real-ip/forwarded first
+    // and only falls back to the raw peer address (via ConnectInfo, wired
+    // up in main.rs) if none of those are set. That's the right default
+    // behind a reverse proxy (Railway/Render/Fly all set these), but it
+    // means those headers must only be trusted because the proxy sets
+    // them itself and strips any client-supplied copy — never expose this
+    // server directly to the internet without a proxy doing that.
+    let governor_conf = Box::leak(Box::new(
+        GovernorConfigBuilder::default()
+            .key_extractor(SmartIpKeyExtractor)
+            .per_second(2)
+            .burst_size(5)
+            .finish()
+            .expect("rate-limit config: burst_size and per_second must be non-zero"),
+    ));
+
+    let google_oauth_routes = Router::new()
         .route("/auth/google/login", get(auth::google_login))
         .route("/auth/google/callback", get(auth::google_callback))
+        .layer(GovernorLayer {
+            config: governor_conf,
+        });
+
+    Router::new()
+        .route("/health", get(health::health))
+        .merge(google_oauth_routes)
         .route("/auth/logout", post(auth::logout))
         .route("/me", get(me::me))
         .route("/app/status", get(me::app_status))
@@ -151,5 +180,43 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         test_support::delete_user(&state.db, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn google_login_is_rate_limited_per_ip() {
+        let state = test_support::app_state().await;
+        let app = router().with_state(state);
+
+        let hit = |app: Router<()>, ip: &'static str| {
+            let app = app.clone();
+            async move {
+                app.oneshot(
+                    Request::builder()
+                        .uri("/auth/google/login")
+                        .header("x-forwarded-for", ip)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+                .status()
+            }
+        };
+
+        // Burst size is 5: the first 5 requests from the same IP succeed
+        // (a redirect to Google), the 6th is throttled.
+        for _ in 0..5 {
+            assert_eq!(hit(app.clone(), "203.0.113.10").await, StatusCode::SEE_OTHER);
+        }
+        assert_eq!(
+            hit(app.clone(), "203.0.113.10").await,
+            StatusCode::TOO_MANY_REQUESTS
+        );
+
+        // A different IP has its own, untouched quota.
+        assert_eq!(
+            hit(app.clone(), "203.0.113.20").await,
+            StatusCode::SEE_OTHER
+        );
     }
 }

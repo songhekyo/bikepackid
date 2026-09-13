@@ -135,10 +135,16 @@ async fn main() {
         .expect("failed to bind port");
 
     tracing::info!("bikepackid backend listening on port {port}");
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .expect("server error");
+    // `with_connect_info` makes the raw peer address available to the rate
+    // limiter as a fallback for when x-forwarded-for/x-real-ip/forwarded
+    // aren't set (e.g. direct connections in local dev, no proxy).
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .expect("server error");
 
     telemetry.shutdown();
 }
