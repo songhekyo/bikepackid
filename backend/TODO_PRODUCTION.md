@@ -9,7 +9,8 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 - [ ] **Google OAuth consent screen** — submit ke Google buat verifikasi (mode "Testing" dibatasi ~100 user). Daftarkan juga redirect URI production di Google Cloud Console (client Web, dan Android/iOS kalau app native sudah jalan).
 - [ ] **Rate limiting** di endpoint `/auth/google/login` dan `/auth/google/callback` — belum ada. Tanpa ini endpoint auth rawan disalahgunakan buat spam/DoS ringan (walau `pending_logins` sudah di-sweep otomatis, tetap perlu limit di level request).
 - [ ] **Backup database** — belum ada strategi. Minimal: automated daily backup dari provider Postgres yang dipakai (Supabase/Neon/RDS biasanya punya built-in).
-- [ ] **Monitoring & alerting** — saat ini cuma `tracing`/log ke stdout. Perlu structured logging + tempat nampung log (misal ke provider hosting atau Axiom/Grafana Loki), dan alert kalau error rate naik atau server down.
+- [ ] **Sambungkan `OTEL_EXPORTER_OTLP_ENDPOINT` ke collector production** — kode-nya sudah siap (lihat bagian Observability di README), tinggal pilih & deploy tujuan (OpenTelemetry Collector, Kibana/Elastic APM, Datadog, Grafana Tempo, dst) dan set env var-nya. Tanpa ini trace tidak kemana-mana (cuma log stdout).
+- [ ] **Alerting** — belum ada. Setelah log/trace kekirim ke collector pilihan, set alert minimal buat: error rate naik, server down/health check gagal, latency p99 endpoint auth melonjak.
 
 ## Penting, tapi bisa menyusul cepat setelah live
 
@@ -35,3 +36,6 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 - [x] `pending_logins` (in-memory, single-instance) auto-sweep percobaan login kedaluwarsa.
 - [x] Dependency bebas kerentanan diketahui (`cargo audit` bersih, 1 pengecualian terdokumentasi).
 - [x] Test coverage: unit test (JWT, role, config) + test terhadap DB asli (session, audit log) + test end-to-end lewat router (401/403/200 sesuai skenario).
+- [x] Request ID per request (`x-request-id`, auto-generate, ikut di response header & semua log/span request itu).
+- [x] Log terstruktur (JSON via `LOG_FORMAT=json`) + tiap request otomatis ke-log (method/path/status/latency).
+- [x] Wiring OpenTelemetry/OTLP trace export (vendor-neutral) — tinggal arahkan `OTEL_EXPORTER_OTLP_ENDPOINT` ke collector pilihan saat production (lihat poin "Wajib" di atas).

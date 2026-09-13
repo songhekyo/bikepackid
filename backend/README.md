@@ -31,6 +31,15 @@ Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvens
 - `src/audit.rs` — catat event keamanan (login/logout, dst) ke tabel `audit_logs`.
 - `src/routes/auth.rs` — `/auth/google/login`, `/auth/google/callback`, `/auth/logout`.
 - `src/routes/me.rs` — `/me` (semua role login), `/app/status` (contoh route khusus `creator` ke atas).
+- `src/telemetry.rs` — setup logging + (opsional) export trace OpenTelemetry.
+
+## Observability
+
+- **Request ID**: tiap request dapat `x-request-id` (UUID, auto-generate kalau belum ada), dikembalikan di response header yang sama, dan tercatat di semua log/span request itu. Berguna buat lacak satu request lintas log.
+- **Log terstruktur**: default human-readable buat dev lokal. Set `LOG_FORMAT=json` buat output JSON per baris (siap ditelan log shipper apa pun yang baca stdout — Filebeat/Vector buat ELK/Kibana, Datadog Agent, Fluent Bit, dst — tanpa perlu SDK vendor khusus buat logging).
+- **Tiap request otomatis ke-log** (level INFO) lewat `TraceLayer`, isinya `method`, `path`, `request_id`, `status_code`, `latency_ms`.
+- **Telemetry (trace) via OpenTelemetry/OTLP**: mati secara default (supaya dev lokal tidak butuh collector nyala). Set `OTEL_EXPORTER_OTLP_ENDPOINT` (misal `http://localhost:4318`) buat export trace lewat protokol OTLP — vendor-neutral, jalan ke OpenTelemetry Collector, Kibana/Elastic APM, Datadog, Grafana Tempo, Jaeger, Honeycomb, dll tanpa ganti kode aplikasi (tinggal ganti endpoint collector-nya).
+- Atur verbosity log lewat `RUST_LOG` (standar `tracing`, misal `RUST_LOG=info,tower_http=debug`), default `info`.
 
 ## Keamanan
 
