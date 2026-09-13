@@ -8,8 +8,19 @@ use axum_extra::extract::{
 };
 use chrono::Utc;
 use oauth2::{AuthorizationCode, CsrfToken, PkceCodeChallenge, Scope, TokenResponse};
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC};
 use serde::Deserialize;
 use serde_json::json;
+
+/// Same "unreserved" set JavaScript's `encodeURIComponent` leaves alone.
+/// `NON_ALPHANUMERIC` on its own also escapes `-_.~`, which is safe but
+/// turns a plain OAuth error code like `access_denied` into the needlessly
+/// noisy `access%5Fdenied`.
+const QUERY_VALUE_SAFE: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
 
 use crate::{
     audit,
@@ -58,11 +69,15 @@ pub async fn google_login(State(state): State<SharedState>) -> impl IntoResponse
 
 #[derive(Deserialize)]
 pub struct CallbackQuery {
-    /// Absent when the user declined consent — see `error` below.
+    /// Absent when Google reported an error instead of completing the
+    /// flow — see `error` below.
     code: Option<String>,
     state: String,
-    /// Set by Google (e.g. `access_denied`) when the user cancels the
-    /// consent screen instead of completing it. Not an error on our end.
+    /// Set by Google (e.g. `access_denied` when the user cancels the
+    /// consent screen) instead of `code` when the flow didn't complete.
+    /// We don't interpret this — it's forwarded to the frontend as-is so
+    /// the frontend owns deciding what each value means and how to
+    /// present it.
     error: Option<String>,
 }
 
@@ -78,20 +93,28 @@ pub async fn google_callback(
         logins.remove(&query.state)
     };
 
-    if let Some(error) = query.error {
-        tracing::info!(%error, "user declined the Google consent screen");
-        return Ok(Redirect::to(&format!("{}?login=cancelled", state.config.frontend_url)).into_response());
-    }
-
+    // Validate the login attempt itself *before* looking at `error` — an
+    // unrecognized or expired `state` is a bad request regardless of what
+    // `error` claims, otherwise anyone could hit this endpoint with an
+    // arbitrary `state` + `error` and get it reflected back at them.
     let cutoff = Utc::now() - chrono::Duration::minutes(LOGIN_ATTEMPT_TTL_MINUTES);
-    let pkce_verifier = match pending {
-        Some(entry) if entry.created_at > cutoff => entry.verifier,
+    let pending_entry = match pending {
+        Some(entry) if entry.created_at > cutoff => entry,
         _ => {
             return Err(AppError::BadRequest(
                 "unknown or expired login attempt".to_string(),
             ))
         }
     };
+
+    if let Some(error) = query.error {
+        tracing::info!(%error, "google returned an error instead of completing the login");
+        let encoded_error = percent_encoding::utf8_percent_encode(&error, QUERY_VALUE_SAFE);
+        let redirect_url = format!("{}?error={encoded_error}", state.config.frontend_url);
+        return Ok(Redirect::to(&redirect_url).into_response());
+    }
+
+    let pkce_verifier = pending_entry.verifier;
 
     let code = query
         .code

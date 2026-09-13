@@ -18,7 +18,7 @@ Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvens
 
 - **Unit test murni** (tanpa DB): `auth/jwt.rs` (token valid/salah secret/expired), `models/user.rs` (`Role::can_use_app`), `config.rs` (parsing `COOKIE_SECURE`).
 - **Test terhadap database asli**: `auth/session.rs` (create/revoke/authenticate, termasuk memastikan sesi tidak bisa dipakai buat autentikasi sebagai user lain), `audit.rs` (log tersimpan).
-- **Test end-to-end lewat router** (`routes/mod.rs`, pakai `tower::ServiceExt::oneshot`, tanpa buka port beneran): `/me` tanpa cookie → 401, dengan cookie valid → 200, dengan session yang sudah di-revoke → 401 lagi; `/app/status` → 403 untuk `viewer`, 200 untuk `creator`; `/auth/google/login` → 5 request pertama dari 1 IP (disimulasikan lewat header `x-forwarded-for`) lolos, ke-6 kena 429, IP lain dapat kuota sendiri.
+- **Test end-to-end lewat router** (`routes/mod.rs`, pakai `tower::ServiceExt::oneshot`, tanpa buka port beneran): `/me` tanpa cookie → 401, dengan cookie valid → 200, dengan session yang sudah di-revoke → 401 lagi; `/app/status` → 403 untuk `viewer`, 200 untuk `creator`; `/auth/google/login` → 5 request pertama dari 1 IP (disimulasikan lewat header `x-forwarded-for`) lolos, ke-6 kena 429, IP lain dapat kuota sendiri; `/auth/google/callback` → `error` dari Google di-relay mentah ke frontend untuk percobaan login yang valid, tapi 400 (bukan redirect) kalau `state`-nya tidak dikenal.
 
 ## Struktur
 
@@ -46,7 +46,8 @@ Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvens
 
 - Session token (JWT) disimpan di cookie `httpOnly`, `SameSite=Lax`, dan `Secure` (kecuali di-override lewat `COOKIE_SECURE=false` untuk dev lokal). Masa berlaku cookie diturunkan langsung dari `expires_at` baris `sessions` (bukan konstanta terpisah yang bisa mencle dari yang di database).
 - Setiap token terikat ke baris `sessions` di database (`jti` claim) — logout/ban benar-benar mencabut akses, tidak cuma menghapus cookie di sisi client. `AuthUser` extractor memverifikasi sesi itu milik user yang diklaim JWT (bukan cuma "sesi ini valid"), dalam satu query (`session::authenticate`).
-- Percobaan login yang tidak selesai (`pending_logins`, in-memory) otomatis dibersihkan setelah 10 menit supaya tidak numpuk di memori. User yang cancel di consent screen Google (`error=access_denied`) di-redirect halus ke frontend, bukan dilempar error.
+- Percobaan login yang tidak selesai (`pending_logins`, in-memory) otomatis dibersihkan setelah 10 menit supaya tidak numpuk di memori.
+- Kalau Google mengembalikan `error` (misal `access_denied` saat user cancel di consent screen) buat percobaan login yang **valid** (state dikenal & belum kedaluwarsa), backend relay nilainya apa adanya ke frontend (`{FRONTEND_URL}?error=<nilai>`) — backend tidak menafsirkan/melabeli sendiri (misal jadi `login=cancelled`); frontend yang menentukan artinya & UX-nya. Validasi `state` selalu terjadi **sebelum** cek `error`, supaya request dengan `state` sembarangan tidak bisa dapat nilai `error`-nya di-reflect balik (400 langsung).
 - Event login/logout tercatat di `audit_logs`; kegagalan menulis log itu sendiri tidak silent — masuk `tracing::error!`.
 - Baris `sessions` yang sudah revoked/expired lebih dari 7 hari dibersihkan otomatis oleh background task (`spawn_session_purge_task`, jalan tiap 6 jam) — tabel tidak tumbuh tanpa batas.
 - HTTP client (ke Google) punya timeout eksplisit (`connect_timeout` 5s, `timeout` 10s) — Google lambat/hang tidak bisa menggantung request selamanya.

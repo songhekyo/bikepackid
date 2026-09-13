@@ -219,4 +219,96 @@ mod tests {
             StatusCode::SEE_OTHER
         );
     }
+
+    /// Pulls the `state` value out of the Location header from
+    /// `/auth/google/login`'s redirect, so a callback test can present a
+    /// `state` the server actually recognizes as a real, in-flight login
+    /// attempt (rather than an arbitrary string).
+    async fn start_login_and_get_state(app: &Router<()>) -> String {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/auth/google/login")
+                    .header("x-forwarded-for", "198.51.100.1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let location = response
+            .headers()
+            .get(axum::http::header::LOCATION)
+            .unwrap()
+            .to_str()
+            .unwrap();
+
+        location
+            .split("state=")
+            .nth(1)
+            .and_then(|rest| rest.split('&').next())
+            .expect("login redirect must carry a state param")
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn callback_forwards_googles_error_unlabeled_for_a_real_login_attempt() {
+        let state = test_support::app_state().await;
+        let app = router().with_state(state.clone());
+
+        let csrf_state = start_login_and_get_state(&app).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/auth/google/callback?state={csrf_state}&error=access_denied"
+                    ))
+                    // The rate limiter's key extractor needs an IP from
+                    // somewhere; .oneshot() has no real peer address, so
+                    // supply one via header like the rate-limit test does.
+                    .header("x-forwarded-for", "198.51.100.1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        let location = response
+            .headers()
+            .get(axum::http::header::LOCATION)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        // Relayed as-is (not renamed to something like "cancelled") so the
+        // frontend decides what each Google error code means.
+        assert!(
+            location.ends_with("?error=access_denied"),
+            "expected the raw google error forwarded in the redirect, got {location}"
+        );
+    }
+
+    #[tokio::test]
+    async fn callback_rejects_an_error_param_with_no_matching_login_attempt() {
+        let state = test_support::app_state().await;
+        let app = router().with_state(state);
+
+        // No prior call to /auth/google/login, so this `state` was never
+        // issued by us — an `error` param must not get reflected back for
+        // an attempt we don't recognize.
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/auth/google/callback?state=not-a-real-attempt&error=access_denied")
+                    .header("x-forwarded-for", "198.51.100.2")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
 }

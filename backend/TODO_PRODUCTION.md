@@ -43,7 +43,7 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 - [x] HTTP client ke Google punya timeout (`connect_timeout` 5s, `timeout` 10s) — sebelumnya `reqwest::Client::new()` default tanpa timeout sama sekali, request bisa menggantung selamanya kalau Google lambat/hang.
 - [x] Baris `sessions` yang sudah revoked/expired dibersihkan otomatis (background task tiap 6 jam) — sebelumnya tabel `sessions` tidak pernah dibersihkan sama sekali.
 - [x] `AuthUser` extractor sekarang satu query yang sekaligus memverifikasi sesi itu benar-benar milik user di klaim JWT (bukan dua query terpisah yang implisit saling percaya).
-- [x] User yang cancel di consent screen Google (`error=access_denied`) di-redirect halus ke frontend, bukan 400 mentah dengan pesan deserialisasi.
+- [x] User yang cancel di consent screen Google (`error=access_denied`) di-redirect halus ke frontend, bukan 400 mentah dengan pesan deserialisasi. Backend cuma relay nilai `error` apa adanya (tidak melabeli sendiri jadi "cancelled") — frontend yang menentukan arti & UX-nya. Validasi `state` (harus percobaan login yang dikenal & belum kedaluwarsa) selalu jalan duluan sebelum `error` dibaca, supaya `error` tidak bisa di-reflect balik lewat `state` sembarangan.
 - [x] Error "percobaan login kedaluwarsa/tidak dikenal" sekarang 400 (kesalahan klien), terpisah dari error Google beneran down yang tetap 502 — sebelumnya keduanya dilaporkan sama.
 - [x] `users.email` tidak lagi `UNIQUE` (migrasi 0004) — email yang didaur ulang antar akun Google berbeda tidak lagi bikin login gagal 500.
 - [x] Masa berlaku cookie sesi diturunkan dari `expires_at` baris `sessions` (bukan konstanta terpisah yang bisa mencle dari nilai di database).
