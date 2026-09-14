@@ -17,7 +17,7 @@ Ini bikin sepasang kunci: privat (`~/.ssh/id_ed25519`, jangan pernah dikirim ke 
 1. Daftar di [console.hetzner.cloud](https://console.hetzner.cloud), buat project baru.
 2. "Add Server":
    - **Location**: bebas (Falkenstein/Nuremberg Jerman, atau lokasi lain yang tersedia).
-   - **Image**: Ubuntu 24.04.
+   - **Image**: **Fedora** (pilih versi terbaru yang tersedia di daftar image Hetzner).
    - **Type**: CX22 (2 vCPU / 4GB RAM) — cukup buat Postgres + backend + Caddy jalan bareng. CX11 lebih murah tapi RAM-nya (2GB) agak mepet.
    - **SSH Key**: paste isi `~/.ssh/id_ed25519.pub` (bukan yang privat!).
 3. Create & tunggu sampai server dapat IP publik.
@@ -27,34 +27,34 @@ Ini bikin sepasang kunci: privat (`~/.ssh/id_ed25519`, jangan pernah dikirim ke 
 ```bash
 ssh root@<IP_SERVER>
 ```
+(Kalau `root@` ditolak, coba `ssh fedora@<IP_SERVER>` — sebagian image cloud Fedora pakai user `fedora` dengan `sudo`, bukan login root langsung. Kalau itu yang kejadian, tinggal tambahkan `sudo` di depan tiap perintah di bawah.)
 
 Update sistem:
 ```bash
-apt update && apt upgrade -y
+dnf upgrade --refresh -y
 ```
 
-**Firewall** — defaultnya server Hetzner tidak ada firewall aktif dari OS-nya (beda dari Security Group-nya cloud lain). Kita pasang `ufw` (Uncomplicated Firewall), dan prinsipnya: **tolak semua secara default, buka cuma yang benar-benar perlu**.
+**Firewall** — Fedora pakai `firewalld` (beda dari `ufw` di Ubuntu/Debian yang saya sebut sebelumnya), biasanya sudah aktif secara default di image cloud-nya. Prinsipnya tetap sama: **tolak semua secara default, buka cuma yang benar-benar perlu**.
 
 ```bash
-apt install -y ufw
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow 22/tcp        # SSH
-ufw allow 8080/tcp      # backend, buat testing curl (Fase 1)
-ufw enable
-ufw status verbose
+systemctl enable --now firewalld   # jaga-jaga kalau belum aktif
+firewall-cmd --add-service=ssh --permanent   # biasanya sudah otomatis, aman diulang
+firewall-cmd --add-port=8080/tcp --permanent  # backend, buat testing curl (Fase 1)
+firewall-cmd --reload
+firewall-cmd --list-all
 ```
 
 **Install Docker:**
 ```bash
 curl -fsSL https://get.docker.com | sh
+systemctl enable --now docker
 ```
-(Script resmi Docker — install Docker Engine + Compose plugin sekaligus. Wajar kalau kamu ingin baca isinya dulu sebelum `| sh`: `curl -fsSL https://get.docker.com` tanpa pipe, lihat isinya.)
+(Script resmi Docker ini mendeteksi Fedora otomatis dan install Docker Engine + Compose plugin. Wajar kalau kamu ingin baca isinya dulu sebelum `| sh`: `curl -fsSL https://get.docker.com` tanpa pipe, lihat isinya. Kalau script ini gagal/tidak support versi Fedora kamu, cek panduan resmi [Install Docker Engine on Fedora](https://docs.docker.com/engine/install/fedora/) sebagai alternatif — pakai `dnf` langsung dari repo Docker.)
 
 ## Fase 3 — Deploy aplikasinya
 
 ```bash
-apt install -y git
+dnf install -y git
 git clone https://github.com/songhekyo/bikepackid.git
 cd bikepackid/backend
 ```
@@ -114,19 +114,22 @@ Baru kerjakan ini kalau sudah punya domain (atau subdomain) yang bisa diarahkan 
          - "80:80"
          - "443:443"
        volumes:
-         - ./deploy/Caddyfile:/etc/caddy/Caddyfile
+         - ./deploy/Caddyfile:/etc/caddy/Caddyfile:z
          - caddy_data:/data
    ```
    Tambahkan `caddy_data:` ke daftar `volumes:` di bawah.
+
+   **Catatan khusus Fedora (SELinux):** perhatikan akhiran `:z` di baris volume `Caddyfile` — Fedora aktifkan SELinux *enforcing* secara default, dan tanpa `:z` itu, Docker biasanya kena `Permission denied` pas baca file yang di-*bind mount* dari host (beda dari volume `postgres_data`/`caddy_data` yang dikelola Docker sendiri, itu tidak kena masalah ini). `:z` bilang ke Docker "kasih label SELinux yang benar buat file ini boleh dibaca container". Kalau masih kena `Permission denied` juga, cek `sudo journalctl -u docker` atau `ausearch -m avc` buat lihat denial-nya persis apa.
 3. **Hapus** `ports: ["8080:8080"]` dari service `backend` — biar backend cuma bisa diakses lewat Caddy, bukan langsung dari luar. Ini intinya reverse proxy: satu pintu masuk (Caddy, TLS di sini), bukan tiap service buka port sendiri-sendiri.
 4. Edit `deploy/Caddyfile`, ganti `your-domain.com` dengan domain asli kamu. Caddy otomatis urus sertifikat TLS (Let's Encrypt) — tidak perlu setup manual.
 5. Update `.env`: `FRONTEND_URL`, `GOOGLE_REDIRECT_URL` jadi `https://domain-kamu.com/...`, hapus baris `COOKIE_SECURE=false` (defaultnya `true`, pas buat HTTPS).
 6. Daftarkan redirect URI baru (`https://domain-kamu.com/auth/google/callback`) di Google Cloud Console.
 7. Update firewall: buka 80/443, tutup 8080 dari luar:
    ```bash
-   ufw allow 80/tcp
-   ufw allow 443/tcp
-   ufw delete allow 8080/tcp
+   firewall-cmd --add-service=http --permanent
+   firewall-cmd --add-service=https --permanent
+   firewall-cmd --remove-port=8080/tcp --permanent
+   firewall-cmd --reload
    ```
 8. `docker compose up -d --build`
 
@@ -142,4 +145,5 @@ Setelah ini, alur login Google beneran bisa dites lengkap dari browser.
 | `docker compose up -d --build` | rebuild & jalankan ulang (setelah `git pull` misalnya) |
 | `docker compose down` | matikan semua (data Postgres tetap ada di volume) |
 | `df -h` | cek sisa disk |
-| `ufw status verbose` | cek aturan firewall aktif |
+| `firewall-cmd --list-all` | cek aturan firewall aktif |
+| `sudo journalctl -u docker` | log Docker Engine (kalau `docker compose` aneh) |
