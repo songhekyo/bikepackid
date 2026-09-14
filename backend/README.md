@@ -2,7 +2,7 @@
 
 Sistem User: login via Google OAuth, role-based access (web vs app).
 
-Konteks desain sistem secara keseluruhan (roadmap, entity yang belum diimplementasikan seperti Journey/Checkpoint/marketplace) ada di [`docs/SYSTEM_DESIGN.md`](../docs/SYSTEM_DESIGN.md). Checklist sebelum production ada di [`TODO_PRODUCTION.md`](./TODO_PRODUCTION.md).
+Konteks desain sistem secara keseluruhan (roadmap, entity yang belum diimplementasikan seperti Journey/Checkpoint/marketplace) ada di [`docs/SYSTEM_DESIGN.md`](../docs/SYSTEM_DESIGN.md). Checklist sebelum production ada di [`TODO_PRODUCTION.md`](./TODO_PRODUCTION.md). Panduan deploy ke VPS (Hetzner) ada di [`DEPLOY.md`](./DEPLOY.md).
 
 ## Jalankan lokal
 
