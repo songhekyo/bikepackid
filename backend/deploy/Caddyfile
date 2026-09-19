@@ -1,0 +1,5 @@
+# Phase 2 only — see DEPLOY.md. Replace with your real domain once you
+# have one pointed at the server's IP.
+your-domain.com {
+    reverse_proxy backend:8080
+}

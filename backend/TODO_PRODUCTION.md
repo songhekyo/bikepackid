@@ -7,7 +7,6 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 - [ ] **Deploy di HTTPS** dan pastikan `COOKIE_SECURE` **tidak** di-set `false` (default-nya sudah `true`, cukup jangan di-override).
 - [ ] **JWT_SECRET production** — generate baru yang panjang & random (`openssl rand -base64 48`), jangan pakai nilai dev. Simpan di secrets manager platform hosting (Railway/Render/Fly.io semua punya fitur env var terenkripsi), bukan file `.env` biasa di server.
 - [ ] **Google OAuth consent screen** — submit ke Google buat verifikasi (mode "Testing" dibatasi ~100 user). Daftarkan juga redirect URI production di Google Cloud Console (client Web, dan Android/iOS kalau app native sudah jalan).
-- [ ] **Rate limiting** di endpoint `/auth/google/login` dan `/auth/google/callback` — belum ada. Tanpa ini endpoint auth rawan disalahgunakan buat spam/DoS ringan (walau `pending_logins` sudah di-sweep otomatis, tetap perlu limit di level request).
 - [ ] **Backup database** — belum ada strategi. Minimal: automated daily backup dari provider Postgres yang dipakai (Supabase/Neon/RDS biasanya punya built-in).
 - [ ] **Sambungkan `OTEL_EXPORTER_OTLP_ENDPOINT` ke collector production** — kode-nya sudah siap (lihat bagian Observability di README), tinggal pilih & deploy tujuan (OpenTelemetry Collector, Kibana/Elastic APM, Datadog, Grafana Tempo, dst) dan set env var-nya. Tanpa ini trace tidak kemana-mana (cuma log stdout).
 - [ ] **Alerting** — belum ada. `/health` (ping database) sudah ada buat dipakai orkestrator/load balancer, tapi belum ada yang mengirim alert kalau itu gagal. Setelah log/trace kekirim ke collector pilihan, set alert minimal buat: error rate naik, health check gagal, latency p99 endpoint auth melonjak.
@@ -16,7 +15,7 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 
 - [ ] **CI** — jalankan `cargo test`, `cargo audit`, dan `cargo clippy` otomatis tiap push/PR (belum ada workflow CI sama sekali).
 - [ ] **Migrasi review** — pastikan proses deploy menjalankan `sqlx migrate run` terhadap DB production dengan aman (idealnya lewat CI/CD step terpisah, bukan otomatis saat app start di multi-instance, supaya tidak race kalau nanti scale ke >1 instance).
-- [ ] **`pending_logins` di memory** — cuma aman selama backend jalan 1 instance. Begitu di-scale ke >1 instance (misal buat load balancing), pindahkan ke Redis atau state store bersama, karena in-memory map per-instance tidak akan konsisten antar instance.
+- [ ] **`pending_logins` dan rate limiter di memory** — keduanya cuma aman selama backend jalan 1 instance. Begitu di-scale ke >1 instance (misal buat load balancing), tiap instance punya kuota rate-limit sendiri-sendiri (efektifnya limit riil jadi N× lebih longgar) dan `pending_logins` tidak konsisten antar instance. Pindahkan ke Redis atau state store bersama kalau sudah butuh multi-instance.
 - [ ] **`cargo audit` di CI** — jadwalkan reguler (bukan cuma sekali manual), karena RUSTSEC advisory baru terus muncul. Cek juga apakah pengecualian `RUSTSEC-2023-0071` di `.cargo/audit.toml` sudah ada fix upstream (lihat catatan di file itu).
 - [ ] **Privasi data lokasi** — begitu fitur Journey/Checkpoint jalan (yang nyimpen lat/lng user), perlu kebijakan privasi jelas: siapa yang bisa lihat lokasi, retensi data, dan idealnya opsi "sembunyikan lokasi real-time" karena data lokasi itu sensitif.
 
@@ -44,8 +43,9 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 - [x] HTTP client ke Google punya timeout (`connect_timeout` 5s, `timeout` 10s) — sebelumnya `reqwest::Client::new()` default tanpa timeout sama sekali, request bisa menggantung selamanya kalau Google lambat/hang.
 - [x] Baris `sessions` yang sudah revoked/expired dibersihkan otomatis (background task tiap 6 jam) — sebelumnya tabel `sessions` tidak pernah dibersihkan sama sekali.
 - [x] `AuthUser` extractor sekarang satu query yang sekaligus memverifikasi sesi itu benar-benar milik user di klaim JWT (bukan dua query terpisah yang implisit saling percaya).
-- [x] User yang cancel di consent screen Google (`error=access_denied`) di-redirect halus ke frontend, bukan 400 mentah dengan pesan deserialisasi.
+- [x] User yang cancel di consent screen Google (`error=access_denied`) di-redirect halus ke frontend, bukan 400 mentah dengan pesan deserialisasi. Backend cuma relay nilai `error` apa adanya (tidak melabeli sendiri jadi "cancelled") — frontend yang menentukan arti & UX-nya. Validasi `state` (harus percobaan login yang dikenal & belum kedaluwarsa) selalu jalan duluan sebelum `error` dibaca, supaya `error` tidak bisa di-reflect balik lewat `state` sembarangan.
 - [x] Error "percobaan login kedaluwarsa/tidak dikenal" sekarang 400 (kesalahan klien), terpisah dari error Google beneran down yang tetap 502 — sebelumnya keduanya dilaporkan sama.
 - [x] `users.email` tidak lagi `UNIQUE` (migrasi 0004) — email yang didaur ulang antar akun Google berbeda tidak lagi bikin login gagal 500.
 - [x] Masa berlaku cookie sesi diturunkan dari `expires_at` baris `sessions` (bukan konstanta terpisah yang bisa mencle dari nilai di database).
 - [x] CORS mengizinkan header `Content-Type` — sebelumnya preflight buat request JSON (POST) akan gagal.
+- [x] Rate limiting per-IP di `/auth/google/login` dan `/auth/google/callback` (`tower_governor`, burst 5 / replenish 1 tiap 2 detik, key dari `x-forwarded-for`/`x-real-ip`/`forwarded` dengan fallback ke peer IP). In-memory per-instance — lihat catatan multi-instance di atas.

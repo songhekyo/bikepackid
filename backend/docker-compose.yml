@@ -1,37 +1,13 @@
 services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: bikepackid
-      POSTGRES_PASSWORD: bikepackid_dev
-      POSTGRES_DB: bikepackid
-    ports:
-      - "5432:5432"
-    volumes:
-      - db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bikepackid"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   backend:
     build: .
-    depends_on:
-      db:
-        condition: service_healthy
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Published directly to the host so nginx (running on the host, see
+    # DEPLOY.md) can reverse-proxy to 127.0.0.1:8080. Keep this closed off
+    # from the outside in the firewall once nginx is the only public entry
+    # point — the backend should be reached through the reverse proxy, not
+    # directly from the internet.
     ports:
       - "8080:8080"
-    environment:
-      DATABASE_URL: postgres://bikepackid:bikepackid_dev@db:5432/bikepackid
-      JWT_SECRET: ${JWT_SECRET:-change-this-to-a-long-random-string}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL:-http://localhost:8080/auth/google/callback}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
-      PORT: 8080
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      RUST_LOG: ${RUST_LOG:-info}
-
-volumes:
-  db_data:
