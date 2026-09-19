@@ -1,34 +1,13 @@
 services:
-  postgres:
-    image: postgres:16-bookworm
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   backend:
     build: .
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
     env_file:
       - .env
-    # Published directly to the host for now so you can curl it right
-    # after `docker compose up` (http://<server-ip>:8080). Once you add
-    # Caddy in front (see DEPLOY.md "Phase 2"), remove this and let only
-    # Caddy be reachable from outside — the backend should talk to the
-    # world through the reverse proxy, not directly.
+    # Published directly to the host so nginx (running on the host, see
+    # DEPLOY.md) can reverse-proxy to 127.0.0.1:8080. Keep this closed off
+    # from the outside in the firewall once nginx is the only public entry
+    # point — the backend should be reached through the reverse proxy, not
+    # directly from the internet.
     ports:
       - "8080:8080"
-
-volumes:
-  postgres_data:

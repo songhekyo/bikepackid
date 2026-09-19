@@ -64,7 +64,7 @@ Siapkan `.env` dari template:
 cp .env.production.example .env
 nano .env
 ```
-Isi semua placeholder (`change-this-...`, `YOUR_SERVER_IP`, kredensial Google OAuth). Buat `JWT_SECRET` dan `POSTGRES_PASSWORD`, generate random:
+Isi semua placeholder (`change-this-...`, `YOUR_SERVER_IP`, kredensial Google OAuth, `DATABASE_URL` dari provider Postgres managed kamu — misal Supabase). Buat `JWT_SECRET`, generate random:
 ```bash
 openssl rand -base64 48
 ```
@@ -143,7 +143,7 @@ Setelah ini, alur login Google beneran bisa dites lengkap dari browser.
 | `docker compose logs -f backend` | log realtime |
 | `docker compose restart backend` | restart tanpa rebuild |
 | `docker compose up -d --build` | rebuild & jalankan ulang (setelah `git pull` misalnya) |
-| `docker compose down` | matikan semua (data Postgres tetap ada di volume) |
+| `docker compose down` | matikan backend (database ada di luar — Supabase, tidak kepengaruh) |
 | `df -h` | cek sisa disk |
 | `firewall-cmd --list-all` | cek aturan firewall aktif |
 | `sudo journalctl -u docker` | log Docker Engine (kalau `docker compose` aneh) |
