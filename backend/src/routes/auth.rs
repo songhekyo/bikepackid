@@ -11,6 +11,7 @@ use oauth2::{AuthorizationCode, CsrfToken, PkceCodeChallenge, Scope, TokenRespon
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC};
 use serde::Deserialize;
 use serde_json::json;
+use tracing::Instrument;
 
 /// Same "unreserved" set JavaScript's `encodeURIComponent` leaves alone.
 /// `NON_ALPHANUMERIC` on its own also escapes `-_.~`, which is safe but
@@ -85,27 +86,31 @@ pub async fn google_callback(
     State(state): State<SharedState>,
     Query(query): Query<CallbackQuery>,
 ) -> Result<Response, AppError> {
-    let pending = {
-        let mut logins = state
-            .pending_logins
-            .lock()
-            .expect("pending_logins mutex poisoned");
-        logins.remove(&query.state)
-    };
-
     // Validate the login attempt itself *before* looking at `error` — an
     // unrecognized or expired `state` is a bad request regardless of what
     // `error` claims, otherwise anyone could hit this endpoint with an
     // arbitrary `state` + `error` and get it reflected back at them.
-    let cutoff = Utc::now() - chrono::Duration::minutes(LOGIN_ATTEMPT_TTL_MINUTES);
-    let pending_entry = match pending {
-        Some(entry) if entry.created_at > cutoff => entry,
-        _ => {
-            return Err(AppError::BadRequest(
+    // Wrapped in its own span so the trace waterfall shows this validation
+    // step separately from the network calls below it — useful for exactly
+    // the kind of "which step failed" question a flat single-span trace
+    // can't answer.
+    let pending_entry = tracing::info_span!("validate_pending_login").in_scope(|| {
+        let pending = {
+            let mut logins = state
+                .pending_logins
+                .lock()
+                .expect("pending_logins mutex poisoned");
+            logins.remove(&query.state)
+        };
+
+        let cutoff = Utc::now() - chrono::Duration::minutes(LOGIN_ATTEMPT_TTL_MINUTES);
+        match pending {
+            Some(entry) if entry.created_at > cutoff => Ok(entry),
+            _ => Err(AppError::BadRequest(
                 "unknown or expired login attempt".to_string(),
-            ))
+            )),
         }
-    };
+    })?;
 
     if let Some(error) = query.error {
         tracing::info!(%error, "google returned an error instead of completing the login");
@@ -125,10 +130,13 @@ pub async fn google_callback(
         .exchange_code(AuthorizationCode::new(code))
         .set_pkce_verifier(pkce_verifier)
         .request_async(&state.http_client)
+        .instrument(tracing::info_span!("exchange_code_with_google"))
         .await
         .map_err(|e| AppError::Oauth(e.to_string()))?;
 
-    let google_user = google::fetch_user_info(&state.http_client, token.access_token().secret()).await?;
+    let google_user = google::fetch_user_info(&state.http_client, token.access_token().secret())
+        .instrument(tracing::info_span!("fetch_google_profile"))
+        .await?;
 
     let user = sqlx::query_as::<_, User>(
         r#"
@@ -144,6 +152,7 @@ pub async fn google_callback(
     .bind(&google_user.name)
     .bind(&google_user.picture)
     .fetch_one(&state.db)
+    .instrument(tracing::info_span!("upsert_user"))
     .await?;
 
     let (session_id, expires_at) = session::create(&state.db, user.id).await?;
