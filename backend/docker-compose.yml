@@ -22,7 +22,11 @@ services:
     restart: unless-stopped
     volumes:
       - ./deploy/config.alloy:/etc/alloy/config.alloy:z
-    command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+    # --stability.level=experimental is required for otelcol.exporter.debug
+    # (the temporary diagnostic exporter in config.alloy) — Alloy refuses
+    # experimental components otherwise. Drop this flag along with that
+    # exporter once traces are confirmed flowing.
+    command: run --server.http.listen-addr=0.0.0.0:12345 --stability.level=experimental /etc/alloy/config.alloy
     environment:
       GRAFANA_CLOUD_INSTANCE_ID: ${GRAFANA_CLOUD_INSTANCE_ID}
       GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY}
