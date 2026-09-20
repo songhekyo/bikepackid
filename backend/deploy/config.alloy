@@ -12,18 +12,10 @@ otelcol.receiver.otlp "default" {
 	}
 
 	output {
-		traces  = [otelcol.exporter.otlphttp.grafana_cloud.input, otelcol.exporter.debug.default.input]
-		metrics = [otelcol.exporter.otlphttp.grafana_cloud.input, otelcol.exporter.debug.default.input]
-		logs    = [otelcol.exporter.otlphttp.grafana_cloud.input, otelcol.exporter.debug.default.input]
+		traces  = [otelcol.exporter.otlphttp.grafana_cloud.input]
+		metrics = [otelcol.exporter.otlphttp.grafana_cloud.input]
+		logs    = [otelcol.exporter.otlphttp.grafana_cloud.input]
 	}
-}
-
-// Temporary: prints everything this receiver gets straight to Alloy's own
-// log, so we can tell whether the backend is reaching Alloy at all,
-// separately from whether Alloy can reach Grafana Cloud. Remove once
-// traces are confirmed showing up in Grafana Cloud.
-otelcol.exporter.debug "default" {
-	verbosity = "detailed"
 }
 
 otelcol.auth.basic "grafana_cloud" {
