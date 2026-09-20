@@ -23,7 +23,7 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 opentelemetry = "0.32.0"
-opentelemetry_sdk = { version = "0.32.1", features = ["rt-tokio"] }
+opentelemetry_sdk = { version = "0.32.1", features = ["rt-tokio", "experimental_trace_batch_span_processor_with_async_runtime"] }
 opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["http-proto", "reqwest-client", "trace"] }
 tracing-opentelemetry = "0.33.0"
 tower_governor = { version = "0.3.0", features = ["tracing"] }
