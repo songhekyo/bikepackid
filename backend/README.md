@@ -33,14 +33,17 @@ Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvens
 - `src/routes/me.rs` — `/me` (semua role login), `/app/status` (contoh route khusus `creator` ke atas).
 - `src/routes/health.rs` — `/health`, readiness check yang benar-benar nge-ping database.
 - `src/telemetry.rs` — setup logging + (opsional) export trace OpenTelemetry.
+- `deploy/config.alloy` — config Grafana Alloy (collector OTLP lokal di production, lihat bagian Observability).
 
 ## Observability
 
 - **Request ID**: tiap request dapat `x-request-id` (UUID, auto-generate kalau belum ada), dikembalikan di response header yang sama, dan tercatat di semua log/span request itu. Berguna buat lacak satu request lintas log.
 - **Log terstruktur**: default human-readable buat dev lokal. Set `LOG_FORMAT=json` buat output JSON per baris (siap ditelan log shipper apa pun yang baca stdout — Filebeat/Vector buat ELK/Kibana, Datadog Agent, Fluent Bit, dst — tanpa perlu SDK vendor khusus buat logging).
 - **Tiap request otomatis ke-log** (level INFO) lewat `TraceLayer`, isinya `method`, `path`, `request_id`, `status_code`, `latency_ms`.
-- **Telemetry (trace) via OpenTelemetry/OTLP**: mati secara default (supaya dev lokal tidak butuh collector nyala). Set `OTEL_EXPORTER_OTLP_ENDPOINT` (misal `http://localhost:4318`) buat export trace lewat protokol OTLP — vendor-neutral, jalan ke OpenTelemetry Collector, Kibana/Elastic APM, Datadog, Grafana Tempo, Jaeger, Honeycomb, dll tanpa ganti kode aplikasi (tinggal ganti endpoint collector-nya).
+- **Telemetry (trace) via OpenTelemetry/OTLP**: mati secara default (supaya dev lokal tidak butuh collector nyala). Set `OTEL_EXPORTER_OTLP_ENDPOINT` (misal `http://localhost:4318`) buat export trace lewat protokol OTLP — vendor-neutral, jalan ke OpenTelemetry Collector, Kibana/Elastic APM, Datadog, Grafana Tempo, Jaeger, Honeycomb, dll tanpa ganti kode aplikasi (tinggal ganti endpoint collector-nya). Backend selalu ngirim ke collector **lokal** (endpoint ini ditambah `/v1/traces` otomatis di kode, lihat `telemetry.rs`) — di production endpoint ini nunjuk ke **Grafana Alloy** (`deploy/config.alloy`, jalan sebagai service `alloy` di `docker-compose.yml`), yang baru forward ke Grafana Cloud pakai kredensial akun (`GRAFANA_CLOUD_*` di `.env`). Backend sendiri gak pernah pegang kredensial Grafana Cloud.
+- **Batch span processor pakai runtime Tokio eksplisit** (`opentelemetry_sdk::trace::span_processor_with_async_runtime`, bukan `.with_batch_exporter()` default) — exporter HTTP-nya async (`reqwest-client`, bukan blocking), jadi loop export-nya harus jalan sebagai task Tokio beneran, bukan thread OS polos yang gak punya reactor.
 - Atur verbosity log lewat `RUST_LOG` (standar `tracing`, misal `RUST_LOG=info,tower_http=debug`), default `info`.
+- **Uptime monitoring**: UptimeRobot ping `/health` tiap 5 menit dari luar, kirim alert kalau gagal — di luar codebase ini (konfigurasi di dashboard UptimeRobot), dicatat di sini biar ke-track.
 
 ## Keamanan
 
