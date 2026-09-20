@@ -11,3 +11,19 @@ services:
     # directly from the internet.
     ports:
       - "8080:8080"
+
+  # Local OTLP collector: receives traces from the backend and forwards
+  # them to Grafana Cloud with the account credentials, so the backend
+  # itself never needs to know them (it only ever talks to this container
+  # over the Docker-internal network, unauthenticated). Not exposed to the
+  # host or the internet — only `backend` can reach it, via service name.
+  alloy:
+    image: grafana/alloy:latest
+    restart: unless-stopped
+    volumes:
+      - ./deploy/config.alloy:/etc/alloy/config.alloy:z
+    command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+    environment:
+      GRAFANA_CLOUD_INSTANCE_ID: ${GRAFANA_CLOUD_INSTANCE_ID}
+      GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY}
+      GRAFANA_CLOUD_OTLP_ENDPOINT: ${GRAFANA_CLOUD_OTLP_ENDPOINT}
