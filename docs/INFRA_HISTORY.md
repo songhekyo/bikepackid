@@ -58,7 +58,19 @@ Domain `bikepacking.cyou` diarahkan ke IP VPS (A record), lalu `certbot --nginx 
 
 Kesalahan awal yang ke-catch sebelum sempat dites: redirect URI yang mau didaftarkan di Google Console sempat ditulis `/api/auth/callback/google` — itu konvensi **NextAuth.js** (framework beda), bukan route yang beneran ada di backend Rust ini (`/auth/google/callback`). Dikoreksi sebelum didaftarkan ke Google Console, jadi gak sempat nyebabin kegagalan nyata di production.
 
-## 9. Verifikasi live
+## 9. Observability: dari "wiring doang" ke beneran kekirim (Grafana Cloud + Alloy)
+
+Kode `telemetry.rs` udah siap OTel sejak awal, tapi belum ada tujuan (`OTEL_EXPORTER_OTLP_ENDPOINT` gak di-set). Diisi belakangan, pakai **Grafana Cloud** (free tier) + **Grafana Alloy** sebagai collector lokal (backend → Alloy tanpa auth di jaringan Docker → Alloy forward ke Grafana Cloud pakai kredensial akun). Setup ini kena **tiga bug berlapis**, masing-masing ke-tutup sama bug berikutnya — dokumentasi ini biar ke depan gak perlu re-diagnose dari nol kalau muncul lagi:
+
+1. **Blocking reqwest client di runtime async.** `opentelemetry-otlp` tanpa feature eksplisit diam-diam resolve ke `reqwest-blocking-client`, bukan versi async — dipanggil dari dalam `#[tokio::main]`, gagal cepat dengan pesan generik `"network error"`. Ketauan dari `reqwest::blocking::wait` yang muncul di log pas `RUST_LOG` dinaikin ke `reqwest=trace`. Fix: `opentelemetry-otlp` di-pin eksplisit `default-features = false, features = ["http-proto", "reqwest-client", "trace"]`.
+2. **Batch processor gak punya reactor Tokio.** Setelah fix #1, muncul panic baru: `there is no reactor running`. `SdkTracerProviderBuilder::with_batch_exporter()` (default) jalanin loop export-nya di `std::thread` polos, gak nempel ke runtime Tokio — cocok buat exporter blocking, tapi exporter kita sekarang async, butuh reactor buat `.await`. Ketauan dari baca source `opentelemetry_sdk` langsung (ada dua implementasi processor: `trace/span_processor.rs` yang pakai `std::thread`, dan `trace/span_processor_with_async_runtime.rs` yang pakai runtime beneran). Fix: pakai `span_processor_with_async_runtime::BatchSpanProcessor::builder(exporter, runtime::Tokio)`, attach via `.with_span_processor()`, plus enable feature `experimental_trace_batch_span_processor_with_async_runtime`.
+3. **POST ke path yang salah.** Setelah fix #2, panic-nya hilang tapi export masih gagal, balik ke `"network error"` generik tanpa detail tambahan biarpun `hyper`/`reqwest` di-set ke `trace`. Diisolasi manual: `curl POST http://alloy:4318/v1/traces` dari container lain di network yang sama → `200 OK`; `curl GET http://alloy:4318/` (root) → `404`. Baca source `opentelemetry-otlp` (`resolve_http_endpoint`) konfirmasi: `.with_endpoint(...)` (jalur programatik, yang dipakai kode kita) dipakai **apa adanya**, `/v1/traces` **tidak** auto-ditambahin — beda dari jalur env var `OTEL_EXPORTER_OTLP_ENDPOINT` yang justru auto-nambahin. Backend selama ini POST ke `http://alloy:4318` (404), bukan `http://alloy:4318/v1/traces` (200). Fix: tambahin `/v1/traces` eksplisit di kode.
+
+Pola diagnosis yang kepake konsisten di ketiga bug ini: **jangan percaya pesan error generik dari SDK** (`"network error"` itu sama sekali gak jelas), **isolasi tiap hop manual** (`curl` dari container terpisah buat mastiin jaringan Docker/Alloy gak salah), dan **baca source crate langsung** kalau dokumentasi/pesan error gak cukup (crate-nya udah ke-download di `~/.cargo/registry`, gratis dibaca) — bukan nebak-nebak nama feature/API berkali-kali.
+
+Setelah tiga fix ini, sekaligus cleanup: `otelcol.exporter.debug` (exporter debug sementara yang dipasang buat diagnosis #2 dan #3) dan flag `--stability.level=experimental` yang dia butuhin, dicabut lagi begitu trace udah kekonfirmasi masuk ke Grafana Cloud.
+
+## 10. Verifikasi live
 
 Setelah semua di atas jalan, dites dari luar server (laptop, bukan `curl` di server sendiri):
 ```
@@ -66,6 +78,10 @@ GET /auth/google/login  → 303 ke accounts.google.com (PKCE + state ada)
 GET /auth/google/callback → 303 (redirect sukses, latency ~2s buat tukar code + fetch profil + upsert user)
 ```
 Dikonfirmasi lewat `docker compose logs -f backend` (structured JSON log, `request_id` per request) berbarengan sama tes login manual di browser.
+
+## 11. Uptime monitoring
+
+**UptimeRobot** ping `https://bikepacking.cyou/health` tiap 5 menit dari luar (bukan dari VPS sendiri), kirim alert email kalau gagal. Dipilih `/health` (bukan `/`) karena endpoint itu beneran nge-ping database, bukan 200 statis — jadi kedeteksi juga kalau Supabase yang bermasalah, bukan cuma proses backend crash. Setup-nya di luar codebase (dashboard UptimeRobot), dicatat di sini biar ke-track sebagai bagian dari infra.
 
 ## Ringkasan: rencana vs. kenyataan
 
@@ -76,3 +92,5 @@ Dikonfirmasi lewat `docker compose logs -f backend` (structured JSON log, `reque
 | Database | Postgres lokal (container) | Supabase (Session pooler) |
 | Firewall | Asumsi udah ada | `firewalld` diinstall manual |
 | RAM safety net | Tidak direncanakan | Swap 2GB (wajib, bukan opsional) |
+| Observability | Wiring kode doang | Grafana Cloud + Alloy, beneran kekirim |
+| Uptime monitoring | Tidak direncanakan | UptimeRobot (ping `/health` tiap 5 menit) |

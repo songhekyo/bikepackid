@@ -4,12 +4,9 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 
 ## Wajib sebelum live ke user beneran
 
-- [ ] **Deploy di HTTPS** dan pastikan `COOKIE_SECURE` **tidak** di-set `false` (default-nya sudah `true`, cukup jangan di-override).
-- [ ] **JWT_SECRET production** — generate baru yang panjang & random (`openssl rand -base64 48`), jangan pakai nilai dev. Simpan di secrets manager platform hosting (Railway/Render/Fly.io semua punya fitur env var terenkripsi), bukan file `.env` biasa di server.
-- [ ] **Google OAuth consent screen** — submit ke Google buat verifikasi (mode "Testing" dibatasi ~100 user). Daftarkan juga redirect URI production di Google Cloud Console (client Web, dan Android/iOS kalau app native sudah jalan).
+- [ ] **Google OAuth consent screen** — masih mode "Testing" (dibatasi ~100 user, didaftarin manual). Redirect URI production sudah benar terdaftar (`https://bikepacking.cyou/auth/google/callback`); yang belum: submit consent screen ke Google buat verifikasi kalau mau user di luar daftar testing bisa login.
 - [ ] **Backup database** — belum ada strategi. Minimal: automated daily backup dari provider Postgres yang dipakai (Supabase/Neon/RDS biasanya punya built-in).
-- [ ] **Sambungkan `OTEL_EXPORTER_OTLP_ENDPOINT` ke collector production** — kode-nya sudah siap (lihat bagian Observability di README), tinggal pilih & deploy tujuan (OpenTelemetry Collector, Kibana/Elastic APM, Datadog, Grafana Tempo, dst) dan set env var-nya. Tanpa ini trace tidak kemana-mana (cuma log stdout).
-- [ ] **Alerting** — belum ada. `/health` (ping database) sudah ada buat dipakai orkestrator/load balancer, tapi belum ada yang mengirim alert kalau itu gagal. Setelah log/trace kekirim ke collector pilihan, set alert minimal buat: error rate naik, health check gagal, latency p99 endpoint auth melonjak.
+- [ ] **Alerting berbasis metric/trace** — uptime check sudah ada (lihat "Sudah beres"), tapi belum ada alert buat error rate naik atau latency p99 endpoint auth melonjak. Datanya sudah masuk Grafana Cloud (trace), tinggal bikin alert rule di Grafana buat kondisi-kondisi itu.
 
 ## Penting, tapi bisa menyusul cepat setelah live
 
@@ -37,7 +34,10 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 - [x] Test coverage: unit test (JWT, role, config) + test terhadap DB asli (session, audit log) + test end-to-end lewat router (401/403/200 sesuai skenario).
 - [x] Request ID per request (`x-request-id`, auto-generate, ikut di response header & semua log/span request itu).
 - [x] Log terstruktur (JSON via `LOG_FORMAT=json`) + tiap request otomatis ke-log (method/path/status/latency).
-- [x] Wiring OpenTelemetry/OTLP trace export (vendor-neutral) — tinggal arahkan `OTEL_EXPORTER_OTLP_ENDPOINT` ke collector pilihan saat production (lihat poin "Wajib" di atas).
+- [x] Trace export OpenTelemetry/OTLP **live** ke Grafana Cloud lewat Grafana Alloy (`deploy/config.alloy`) — bukan cuma wiring, sudah dikonfirmasi trace beneran masuk. Lihat `docs/INFRA_HISTORY.md` bagian Observability buat riwayat 3 bug yang sempat nutupin ini.
+- [x] Uptime monitoring — UptimeRobot ping `/health` tiap 5 menit dari luar, alert email kalau gagal.
+- [x] Deploy di HTTPS (`https://bikepacking.cyou`, nginx + certbot) — `COOKIE_SECURE` pakai default `true`, tidak di-override.
+- [x] `JWT_SECRET` production — di-generate random (`openssl rand -base64 48`) saat setup `.env` di server, bukan nilai dev.
 - [x] `/health` — readiness check yang nge-ping database beneran, bukan 200 statis.
 - [x] Graceful shutdown (SIGTERM/Ctrl+C) — request yang sedang jalan diselesaikan dulu, baru trace OTel di-flush, sebelum proses keluar.
 - [x] HTTP client ke Google punya timeout (`connect_timeout` 5s, `timeout` 10s) — sebelumnya `reqwest::Client::new()` default tanpa timeout sama sekali, request bisa menggantung selamanya kalau Google lambat/hang.

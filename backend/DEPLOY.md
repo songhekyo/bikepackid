@@ -8,6 +8,7 @@ Live di `https://bikepacking.cyou`, di-deploy ke VPS Nusa (1 vCPU / 1GB RAM / 25
 - **Reverse proxy**: awalnya rencana Caddy (auto-HTTPS), yang kepake **nginx** + `certbot` manual.
 - **Database**: awalnya rencana Postgres jalan sebagai container di VPS yang sama, yang kepake **Supabase** (managed Postgres) — sekalian ngirit RAM di VPS yang cuma 1GB.
 - **Firewall**: image Fedora dari provider ini **tidak** bawa `firewalld` ter-install (beda dari asumsi awal "biasanya udah ada default").
+- **Observability**: awalnya cuma "wiring kode, belum ada tujuan", sekarang beneran nyala — trace kekirim ke Grafana Cloud lewat Grafana Alloy (Fase 7).
 
 ## Fase 0 — Siapkan SSH key (di laptop kamu, bukan di server)
 
@@ -202,12 +203,35 @@ curl -i https://domain-kamu/auth/google/login
 ```
 `/health` balas `ok`, `/auth/google/login` balas `303` redirect ke `accounts.google.com`. Buat verifikasi login beneran, buka `/auth/google/login` di **browser** (bukan `curl` — perlu login interaktif) dan pantau `docker compose logs -f backend` bareng waktu — baris `GET /auth/google/callback ... status_code=303` artinya kode berhasil ditukar, user ke-upsert, session ke-buat.
 
+## Fase 7 — Trace ke Grafana Cloud (opsional, tapi disarankan)
+
+Backend udah punya instrumentasi OpenTelemetry bawaan (`telemetry.rs`), tinggal kasih tempat tujuan. Kita pakai [Grafana Cloud](https://grafana.com) (ada free tier) + **Grafana Alloy** sebagai collector lokal — backend ngirim ke Alloy tanpa autentikasi (satu jaringan Docker), Alloy yang pegang kredensial buat forward ke Grafana Cloud.
+
+1. Daftar Grafana Cloud, pilih **"Set up app monitoring"** pas onboarding (bukan "Monitor infrastructure"/"Monitor website uptime" — itu produk beda).
+2. Di **Grafana Cloud Portal** (`grafana.com`, bukan instance Grafana-nya) → stack kamu → **Details** → cari card **OpenTelemetry** → **Configure**. Catat 3 nilai: **OTLP Endpoint**, **Instance ID**, generate **API Token** (kepencet sekali doang, langsung simpan).
+3. Tambahin ke `.env` server:
+   ```
+   OTEL_EXPORTER_OTLP_ENDPOINT=http://alloy:4318
+   GRAFANA_CLOUD_OTLP_ENDPOINT=<OTLP Endpoint dari langkah 2>
+   GRAFANA_CLOUD_INSTANCE_ID=<Instance ID dari langkah 2>
+   GRAFANA_CLOUD_API_KEY=<API Token dari langkah 2>
+   ```
+   (`OTEL_EXPORTER_OTLP_ENDPOINT` beda dari `GRAFANA_CLOUD_OTLP_ENDPOINT` — yang pertama nunjuk ke Alloy lokal, yang kedua dipakai Alloy buat forward ke Grafana Cloud beneran. Jangan ketuker.)
+4. `deploy/config.alloy` dan service `alloy` di `docker-compose.yml` udah ada di repo, gak perlu bikin manual. Jalanin:
+   ```bash
+   docker compose up -d
+   docker compose logs -f alloy
+   ```
+   Pastikan Alloy start bersih (gak ada `Error:` di log).
+5. Generate trafik (`curl https://domain-kamu/health` beberapa kali), tunggu ~10 detik, cek di Grafana Cloud: **Explore** → pilih datasource yang namanya ada **`-traces`** (bukan `-prom`, itu buat metrics) → tab **TraceQL** → ketik `{}` → **Shift+Enter**. Trace `bikepackid_backend` harusnya muncul.
+
 ## Perintah yang sering kepake
 
 | Perintah | Fungsi |
 |---|---|
 | `docker compose ps` | status container |
 | `docker compose logs -f backend` | log realtime backend |
+| `docker compose logs -f alloy` | log realtime Alloy (collector trace) |
 | `docker compose restart backend` | restart tanpa rebuild (**tidak** baca ulang `.env`) |
 | `docker compose up -d` | recreate container kalau `.env` berubah (baca ulang env) |
 | `docker compose up -d --build` | rebuild & jalankan ulang (setelah `git pull`/ubah kode) |
