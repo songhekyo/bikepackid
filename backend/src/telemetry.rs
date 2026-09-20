@@ -1,6 +1,9 @@
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_otlp::{SpanExporter, WithExportConfig};
-use opentelemetry_sdk::{trace::SdkTracerProvider, Resource};
+use opentelemetry_sdk::{
+    runtime::Tokio, trace::span_processor_with_async_runtime::BatchSpanProcessor,
+    trace::SdkTracerProvider, Resource,
+};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
 /// Holds the OTel trace provider alive for the process lifetime and gives
@@ -63,8 +66,18 @@ pub fn init(service_name: &str) -> Telemetry {
                 .with_service_name(service_name.to_string())
                 .build();
 
+            // `.with_batch_exporter(exporter)` would use the SDK's default
+            // batch processor, which runs its export loop on a plain OS
+            // thread with no Tokio reactor attached — fine for exporters
+            // that do blocking I/O, but our exporter's HTTP client is
+            // async (reqwest's async client, not the blocking one) and
+            // panics without a runtime context. `BatchSpanProcessor`'s
+            // async-runtime variant drives that loop as a proper Tokio
+            // task instead, so the exporter's `.await`s actually work.
+            let processor = BatchSpanProcessor::builder(exporter, Tokio).build();
+
             let provider = SdkTracerProvider::builder()
-                .with_batch_exporter(exporter)
+                .with_span_processor(processor)
                 .with_resource(resource)
                 .build();
 
