@@ -56,9 +56,15 @@ pub fn init(service_name: &str) -> Telemetry {
 
     let (otel_layer, tracer_provider) = match &otel_endpoint {
         Some(endpoint) => {
+            // `.with_endpoint()` here is the programmatic-override path in
+            // opentelemetry-otlp, which — unlike the OTEL_EXPORTER_OTLP_ENDPOINT
+            // env var it's named after — is used as-is, with no `/v1/traces`
+            // appended (confirmed by reading the crate's own
+            // resolve_http_endpoint source). Without appending it ourselves,
+            // every export silently 404s against the collector's root path.
             let exporter = SpanExporter::builder()
                 .with_http()
-                .with_endpoint(endpoint)
+                .with_endpoint(format!("{endpoint}/v1/traces"))
                 .build()
                 .expect("failed to build OTLP span exporter");
 
