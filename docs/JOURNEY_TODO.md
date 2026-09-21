@@ -16,6 +16,8 @@ Kebanyakan langkah ini dilakuin **manual di dashboard Cloudflare** — gak bisa 
 
 **Catatan batasan yang diterima (bukan bug)**: bucket public buat baca berarti siapa aja yang tau/nebak URL objek bisa akses foto, termasuk punya journey yang masih `draft` — tapi karena nama file objeknya random (UUID), ini "security by obscurity" yang wajar dipakai banyak app buat kasus kayak gini (bedain dari soal *visibility* journey di database yang tetep ketat lewat `visible_checkpoints`/`visible_posts` VIEW). Solusi yang lebih ketat (signed read URL) butuh proxy baca lewat backend — nge-reintroduce beban VPS yang justru mau dihindarin, jadi sengaja gak dilakuin.
 
+**Belajar SRE (nyusul, gak blocking)**: setup pertama tetep manual di dashboard (paling cepat buat dapetin credential-nya). Begitu udah jalan, worth di-Terraform-in sebagai latihan — `cloudflare_r2_bucket` resource, scope cuma buat R2 ini (jangan retroactively nulis ulang VPS/Supabase/GHCR yang udah stabil). Local state dulu, remote state jadi latihan lanjutan kalau mau.
+
 ## Task 1 — Journey/Checkpoint/Post core module
 
 Loop inti: create journey → checkpoint → post. Semua yang lain nunggu ini kelar duluan.
