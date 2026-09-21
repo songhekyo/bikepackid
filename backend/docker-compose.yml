@@ -1,6 +1,10 @@
 services:
   backend:
-    build: .
+    # Built by .github/workflows/ci.yml on every push to main and pushed to
+    # GHCR — the VPS only ever pulls a prebuilt image, it never compiles
+    # Rust itself (see DEPLOY.md for why: 1 vCPU/1GB was never a reasonable
+    # place to run a Rust compile repeatedly).
+    image: ghcr.io/songhekyo/bikepackid-backend:latest
     restart: unless-stopped
     env_file:
       - .env

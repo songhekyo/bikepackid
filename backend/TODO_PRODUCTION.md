@@ -10,10 +10,9 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 
 ## Penting, tapi bisa menyusul cepat setelah live
 
-- [ ] **CI** — jalankan `cargo test`, `cargo audit`, dan `cargo clippy` otomatis tiap push/PR (belum ada workflow CI sama sekali).
 - [ ] **Migrasi review** — pastikan proses deploy menjalankan `sqlx migrate run` terhadap DB production dengan aman (idealnya lewat CI/CD step terpisah, bukan otomatis saat app start di multi-instance, supaya tidak race kalau nanti scale ke >1 instance).
 - [ ] **`pending_logins` dan rate limiter di memory** — keduanya cuma aman selama backend jalan 1 instance. Begitu di-scale ke >1 instance (misal buat load balancing), tiap instance punya kuota rate-limit sendiri-sendiri (efektifnya limit riil jadi N× lebih longgar) dan `pending_logins` tidak konsisten antar instance. Pindahkan ke Redis atau state store bersama kalau sudah butuh multi-instance.
-- [ ] **`cargo audit` di CI** — jadwalkan reguler (bukan cuma sekali manual), karena RUSTSEC advisory baru terus muncul. Cek juga apakah pengecualian `RUSTSEC-2023-0071` di `.cargo/audit.toml` sudah ada fix upstream (lihat catatan di file itu).
+- [ ] **`cargo audit` terjadwal** — `.github/workflows/ci.yml` udah jalanin `cargo audit` tiap push/PR, tapi itu cuma ke-trigger kalau ada kode yang berubah; RUSTSEC advisory baru bisa muncul kapan aja buat `Cargo.lock` yang udah lama gak disentuh. Tambahin trigger `schedule` (cron mingguan) di workflow yang sama biar tetep ke-cek walau gak ada push. Cek juga apakah pengecualian `RUSTSEC-2023-0071` di `.cargo/audit.toml` sudah ada fix upstream (lihat catatan di file itu).
 - [ ] **Privasi data lokasi** — begitu fitur Journey/Checkpoint jalan (yang nyimpen lat/lng user), perlu kebijakan privasi jelas: siapa yang bisa lihat lokasi, retensi data, dan idealnya opsi "sembunyikan lokasi real-time" karena data lokasi itu sensitif.
 
 ## Nice to have (tidak blocking launch awal)
@@ -24,6 +23,7 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 
 ## Sudah beres
 
+- [x] **CI** — `.github/workflows/ci.yml` jalanin `cargo test`, `cargo clippy`, `cargo audit` tiap push/PR, plus build & push image Docker ke GHCR tiap push ke `main` — VPS tinggal `docker compose pull`, gak pernah compile Rust sendiri lagi (lihat `DEPLOY.md`).
 - [x] Login tanpa password (Google OAuth only, PKCE + CSRF state).
 - [x] Session bisa di-revoke (tabel `sessions`, dicek tiap request).
 - [x] Cookie session `httpOnly` + `Secure` (default) + `SameSite=Lax`.

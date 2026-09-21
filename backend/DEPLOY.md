@@ -111,16 +111,15 @@ Isi tiap placeholder:
 - `FRONTEND_URL` — `https://domain-kamu`.
 - `COOKIE_SECURE` — hapus baris ini (default `true`, pas buat HTTPS yang udah kita pasang dari awal berkat nginx+certbot di Fase 5).
 
-Build & jalankan — **pakai `tmux`**, bukan langsung di sesi SSH biasa. Build ini makan waktu **15–40 menit** di CPU sekecil ini (compile semua dependency Rust dari nol); kalau SSH putus di tengah jalan, `docker compose up --build` yang jalan langsung di shell bakal ikut mati (BuildKit nge-cancel build begitu client-nya putus) — beda dari proses biasa yang lanjut di background:
+**Update (lihat `docs/INFRA_HISTORY.md`): server ini gak build Rust lagi.** Awalnya build image langsung di VPS (15–40 menit di CPU sekecil ini, perlu `tmux` supaya gak ikut mati kalau SSH putus — BuildKit nge-cancel build begitu client-nya putus). Sekarang `.github/workflows/ci.yml` yang build image di GitHub Actions dan push ke GHCR (`ghcr.io/songhekyo/bikepackid-backend`) setiap push ke `main`; VPS tinggal `pull` image jadi, gak pernah compile apa-apa. Login sekali ke GHCR (Personal Access Token dengan scope `read:packages` — atau skip ini kalau package-nya udah di-set public di GitHub):
 ```bash
-dnf install -y tmux
-tmux new -s build
+docker login ghcr.io -u <github-username>
 ```
-Di dalam sesi tmux:
+Lalu tarik & jalankan:
 ```bash
-docker compose up -d --build
+docker compose pull backend
+docker compose up -d backend
 ```
-Kalau SSH putus, tinggal `tmux attach -t build` buat nyambung lagi tanpa kehilangan progress build.
 
 Cek jalan atau tidak:
 ```bash
@@ -232,11 +231,10 @@ Backend udah punya instrumentasi OpenTelemetry bawaan (`telemetry.rs`), tinggal 
 | `docker compose ps` | status container |
 | `docker compose logs -f backend` | log realtime backend |
 | `docker compose logs -f alloy` | log realtime Alloy (collector trace) |
-| `docker compose restart backend` | restart tanpa rebuild (**tidak** baca ulang `.env`) |
+| `docker compose restart backend` | restart tanpa pull ulang (**tidak** baca ulang `.env`) |
 | `docker compose up -d` | recreate container kalau `.env` berubah (baca ulang env) |
-| `docker compose up -d --build` | rebuild & jalankan ulang (setelah `git pull`/ubah kode) |
+| `docker compose pull backend && docker compose up -d backend` | tarik image terbaru (habis push ke `main`, CI selesai) & jalankan ulang |
 | `docker compose down` | matikan backend (database ada di luar — Supabase, tidak kepengaruh) |
-| `tmux attach -t build` | nyambung lagi ke sesi build yang lagi/pernah jalan |
 | `df -h` / `free -h` | cek sisa disk / RAM+swap |
 | `firewall-cmd --list-all` | cek aturan firewall aktif |
 | `nginx -t` | cek syntax config nginx sebelum reload |
