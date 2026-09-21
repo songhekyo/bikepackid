@@ -97,12 +97,18 @@ Ketiganya dirancang supaya **aditif** kalau nanti dibangun — gak butuh migrasi
 Bikepacker sering mau nunjukin gear yang dipakai di satu journey — bukan cuma sepeda, tapi juga kamera, helm, tenda, dll. Awalnya dipikir sebagai "bikecheck" (khusus sepeda), tapi digeneralisasi jadi satu konsep equipment/gear yang fleksibel, karena tiap item — apapun kategorinya — bakal jadi titik koneksi yang sama ke commerce nanti (Fase 4): orang liat journey, liat gear apa yang dipakai, klik buat beli barang yang sama.
 
 ```
+equipment_categories      -- lookup table, bukan enum
+  id, name (unique)        -- 'Sepeda', 'Ban', 'Groupset', 'Tas', 'Kamera',
+                            -- 'Helm', 'Tenda', 'Kompor', dst — di-seed lewat
+                            -- migration, admin bisa nambah baris baru kapan
+                            -- aja tanpa migration lagi
+
 journey_equipment
-  id, journey_id, category, name, brand (nullable),
+  id, journey_id, category_id, name, brand (nullable),
   product_url (nullable), notes, created_at
 ```
 
-- **`category`** — teks bebas ('bike', 'tires', 'groupset', 'bags', 'camera', 'helmet', 'tent', 'stove', dst), bukan enum. Taksonomi gear bikepacking itu luas dan terus nambah (ini juga kenapa gak dipisah jadi tabel per kategori kayak `bikechecks`/`bikecheck_items` — satu tabel flat lebih pas buat daftar gear yang jenisnya macem-macem).
+- **`category_id`** — FK ke `equipment_categories`, **bukan teks bebas**. Alasan pakai lookup table dan bukan Postgres `ENUM`: taksonomi gear bikepacking terus nambah (kategori baru kayak "power bank"/"GPS device" bisa muncul kapan aja), dan nambah value ke `ENUM` butuh migration setiap kali — nambah baris ke lookup table enggak. FK juga nyegah typo/duplikat ('Bike' vs 'bike' vs 'bicycle') yang bisa kejadian kalau teks bebas.
 - **`brand`** — opsional, teks bebas. Berguna buat matching ke produk beneran nanti.
 - **`product_url`** — opsional, link luar (misal link affiliate/toko tempat beli). Ini seam murah ke commerce **sekarang**, bukan bangun infrastruktur marketplace beneran — begitu ada tabel `products` sungguhan di Fase 4, tinggal nambah kolom `product_id` (nullable FK) di sampingnya, additive lagi.
 - Satu journey bisa punya 0+ equipment — semuanya opsional, gak ada yang wajib diisi.
