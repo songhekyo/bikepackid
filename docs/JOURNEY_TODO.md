@@ -1,6 +1,20 @@
 # Journey — implementation TODO
 
-Breakdown kerja buat 3 task yang udah di-track (lihat sesi kerja, task #1-#3), urut sesuai dependency: task 2 dan 3 sama-sama nunggu task 1 kelar (butuh tabel `journeys` ada duluan), tapi 2 dan 3 sendiri gak saling gantung. Rujukan desain lengkap ada di [`SYSTEM_DESIGN.md`](./SYSTEM_DESIGN.md); rujukan implementasi detail (file per file) ada di plan file sesi ini.
+Breakdown kerja buat 4 task yang udah di-track (lihat sesi kerja, task #0-#3), urut sesuai dependency: task 0 (infra) harus kelar duluan sebelum task 1 mulai ngoding (butuh credential R2 buat upload foto). Task 2 dan 3 sama-sama nunggu task 1 kelar (butuh tabel `journeys` ada duluan), tapi 2 dan 3 sendiri gak saling gantung. Rujukan desain lengkap ada di [`SYSTEM_DESIGN.md`](./SYSTEM_DESIGN.md); rujukan implementasi detail (file per file) ada di plan file sesi ini.
+
+## Task 0 — Setup infra Cloudflare R2 (prasyarat, sebelum ngoding)
+
+Kebanyakan langkah ini dilakuin **manual di dashboard Cloudflare** — gak bisa diotomatisin dari sini, sama kayak setup VPS/Supabase/GHCR sebelumnya. Saya kasih instruksi persis pas kita mulai kerjain task ini.
+
+- [ ] Bikin akun Cloudflare (gratis) kalau belum ada
+- [ ] Bikin R2 bucket baru (misal `bikepackid-media`)
+- [ ] Generate R2 API token (Access Key ID + Secret Access Key) — scoped **cuma** ke bucket ini (read+write), bukan full account access
+- [ ] Catat R2 endpoint (`https://<account_id>.r2.cloudflarestorage.com`)
+- [ ] Aktifkan public access ke bucket buat baca (r2.dev public URL dulu — gratis, cukup buat mulai; custom domain kayak `media.bikepacking.cyou` bisa nyusul, tinggal ganti prefix URL doang, gak breaking)
+- [ ] Tambah ke `.env`/`.env.production.example`: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL_BASE`
+- [ ] **Perlakuan credential**: sama kayak DB password/API key lain di project ini — jangan paste mentah ke chat, rotate kalau kepaste gak sengaja
+
+**Catatan batasan yang diterima (bukan bug)**: bucket public buat baca berarti siapa aja yang tau/nebak URL objek bisa akses foto, termasuk punya journey yang masih `draft` — tapi karena nama file objeknya random (UUID), ini "security by obscurity" yang wajar dipakai banyak app buat kasus kayak gini (bedain dari soal *visibility* journey di database yang tetep ketat lewat `visible_checkpoints`/`visible_posts` VIEW). Solusi yang lebih ketat (signed read URL) butuh proxy baca lewat backend — nge-reintroduce beban VPS yang justru mau dihindarin, jadi sengaja gak dilakuin.
 
 ## Task 1 — Journey/Checkpoint/Post core module
 
@@ -19,6 +33,12 @@ Loop inti: create journey → checkpoint → post. Semua yang lain nunggu ini ke
 - [ ] `src/routes/journey.rs` — handler tipis, pola sama kayak `routes/me.rs`; reads public (query ke `visible_checkpoints`/`visible_posts`, bukan tabel mentah), writes butuh `AuthUser` + `role.can_use_app()`
 - [ ] `src/routes/mod.rs` — `pub mod journey;` + wire 4 route (`/journeys`, `/journeys/:id`, `/journeys/:id/checkpoints`, `/checkpoints/:id/posts`)
 - [ ] `src/main.rs` — `mod journey;`
+
+### Upload foto (perlu Task 0 kelar duluan)
+- [ ] `Cargo.toml` — dependency S3-compatible client (cek opsi paling ringan buat generate presigned URL — belum tentu butuh SDK penuh kayak `aws-sdk-s3` kalau cuma buat sign URL)
+- [ ] `AppState` — tambah field client/config R2
+- [ ] Endpoint `POST /journeys/:id/checkpoints/:id/upload-url` (atau serupa) — return presigned PUT URL, App upload foto langsung ke R2, backend cuma nyimpen URL publik hasilnya ke `posts.media_url`/`journeys.cover_image` setelah upload sukses
+- [ ] `post.type` tambah `'photo'` di enum
 
 ### Checkpoint ID (buat offline-sync nanti)
 - [ ] `create_checkpoint` nerima `id` opsional dari client (bukan asumsi server yang selalu generate) — App (creator) bakal butuh ini pas offline-sync dibangun, jangan sampai jadi breaking change belakangan

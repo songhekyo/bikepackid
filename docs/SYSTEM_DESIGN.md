@@ -67,7 +67,7 @@ checkpoints            -- titik lokasi manual-trigger
   status ('published' | 'flagged' | 'removed')
 
 posts                  -- konten nempel ke checkpoint
-  id, checkpoint_id, type ('video' | 'text' | 'thread_item'),
+  id, checkpoint_id, type ('photo' | 'video' | 'text' | 'thread_item'),
   body, media_url, parent_post_id (nullable, buat thread), created_at
   status ('published' | 'flagged' | 'removed')
 ```
@@ -79,6 +79,13 @@ Alur pengisian lokasi: **manual trigger** (tap "Tambah Titik" → HP ambil GPS l
 `journeys.start_lat/start_lng` dan `end_lat/end_lng` — titik awal & akhir rencana rute, diisi lewat cara yang sama (drop pin / cari nama tempat via geocoding, bukan input angka manual), konsisten sama prinsip di atas. Bedanya sama `checkpoints`: dua kolom ini cuma nunjukin **titik ujung rencana** (berguna khusus buat journey yang masih `planning` — belum ada checkpoint sama sekali karena trip belum mulai, jadi ini satu-satunya info lokasi yang bisa ditampilin di peta buat pitch sponsor), bukan titik-titik yang dilewatin selama perjalanan (itu tugas `checkpoints`). Kolomnya **nullable** di database (biar journey `draft` yang masih ditulis/belum lengkap tetap bisa disimpan), tapi **wajib** begitu keluar dari `draft` — ditegakkan lewat `CHECK` constraint di database (`status = 'draft' OR (start_lat IS NOT NULL AND start_lng IS NOT NULL AND end_lat IS NOT NULL AND end_lng IS NOT NULL)`), bukan cuma validasi di kode aplikasi. Ini sengaja di level database supaya invariant-nya terjamin walau ada jalur lain yang nyentuh tabel ini nanti (endpoint baru, script backfill, dll) — bukan bergantung ke tiap developer inget nulis pengecekan yang sama berulang-ulang.
 
 Video di-**embed** dari YouTube/Instagram/TikTok (bukan hosting sendiri) — hemat biaya storage/bandwidth.
+
+**Foto beda kasus dari video — di-hosting sendiri, bukan embed.** Dicek dulu ke aplikasi sejenis ([Pebbls](https://www.pebbls.com/), [Rolling Around](https://rollingaround.app/)) — keduanya upload foto beneran sebagai bagian inti dari tiap titik/moment, bukan link-out. Buat platform cerita perjalanan, foto jauh lebih sering dipakai daripada video, jadi maksa "paste link foto yang di-hosting di tempat lain" bakal jadi friksi berat di loop inti (beda dari video yang emang wajar berasal dari platform lain).
+
+- **Storage: Cloudflare R2**, bukan Supabase Storage — R2 **gak ada biaya egress**, penting buat media-heavy public site (foto dilihat berkali-kali oleh banyak viewer). Free tier 10GB. Supabase Storage free tier lebih kecil dan bandwidth-nya berpotensi kena biaya begitu traffic naik.
+- **Pola upload: presigned URL**, bukan proxy lewat backend. Backend generate URL upload yang udah di-sign, client (App) upload **langsung** ke R2 pakai URL itu — file gak pernah lewat VPS 1GB kita. Ini konsisten sama concern resource VPS yang jadi tema infra sepanjang project ini (lihat `INFRA_HISTORY.md`) — proxy file besar (foto bisa beberapa MB) lewat backend kecil itu buang-buang RAM/bandwidth yang gak perlu.
+- `post.type` nambah `'photo'` — sebelumnya cuma `video`/`text`/`thread_item`.
+- Setup R2 (bucket, API token/credential) adalah **prasyarat infra**, dilakuin sebelum implementasi Task 1 (Journey/Checkpoint/Post) mulai — lihat `docs/JOURNEY_TODO.md`.
 
 **Status journey** (beda dari checkpoint/post yang langsung `published` saat dibuat — lihat kebijakan moderasi di bawah):
 - `draft` — privat, cuma pemilik yang bisa lihat.
