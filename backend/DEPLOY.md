@@ -111,28 +111,26 @@ Isi tiap placeholder:
 - `FRONTEND_URL` — `https://domain-kamu`.
 - `COOKIE_SECURE` — hapus baris ini (default `true`, pas buat HTTPS yang udah kita pasang dari awal berkat nginx+certbot di Fase 5).
 
-**Update (lihat `docs/INFRA_HISTORY.md`): server ini gak build Rust lagi.** Awalnya build image langsung di VPS (15–40 menit di CPU sekecil ini, perlu `tmux` supaya gak ikut mati kalau SSH putus — BuildKit nge-cancel build begitu client-nya putus). Sekarang `.github/workflows/ci.yml` yang build image di GitHub Actions dan push ke GHCR (`ghcr.io/songhekyo/bikepackid-backend`) setiap push ke `main`; VPS tinggal `pull` image jadi, gak pernah compile apa-apa. Login sekali ke GHCR (Personal Access Token dengan scope `read:packages` — atau skip ini kalau package-nya udah di-set public di GitHub):
+**Update (lihat `docs/INFRA_HISTORY.md`): server ini gak build Rust lagi.** Awalnya build image langsung di VPS (15–40 menit di CPU sekecil ini, perlu `tmux` supaya gak ikut mati kalau SSH putus — BuildKit nge-cancel build begitu client-nya putus). Sekarang `.github/workflows/ci.yml` yang build image di GitHub Actions dan push ke GHCR (`ghcr.io/songhekyo/bikepackid-backend`) setiap push ke `main`, dan **Watchtower** (service di `docker-compose.yml`) yang polling GHCR tiap 5 menit dan auto-`pull`+restart `backend` begitu ada image baru — jadi normalnya kamu **gak perlu deploy manual sama sekali** setelah setup awal ini. Package GHCR-nya public, jadi gak perlu `docker login`.
+
+Setup pertama kali (sekali aja — abis ini Watchtower yang jalanin update-nya):
 ```bash
-docker login ghcr.io -u <github-username>
-```
-Lalu tarik & jalankan:
-```bash
-docker compose pull backend
-docker compose up -d backend
+docker compose up -d
 ```
 
 Cek jalan atau tidak:
 ```bash
 docker compose ps
 docker compose logs -f backend
+docker compose logs -f watchtower
 ```
-Migrasi database jalan otomatis saat backend start — cari baris `bikepackid backend listening on port 8080` di log, tanpa `panicked at ...` sebelumnya.
+Migrasi database jalan otomatis saat backend start — cari baris `bikepackid backend listening on port 8080` di log, tanpa `panicked at ...` sebelumnya. `alloy` sengaja **gak** ikut di-auto-update Watchtower (lihat komentar di `docker-compose.yml`) — upgrade Alloy tetep manual/`docker compose pull alloy && docker compose up -d alloy`, karena config syntax-nya pernah berubah antar versi.
 
 Cek **commit mana** yang lagi live (gak perlu inspect digest image manual):
 ```bash
 curl https://domain-kamu/version
 ```
-Balasnya `{"git_sha": "<commit sha>"}` — commit SHA itu ke-bake ke image waktu CI build (lihat `.github/workflows/ci.yml`), bukan dibaca dari `.env`, jadi selalu akurat sama image yang beneran jalan.
+Balasnya `{"git_sha": "<commit sha>"}` — commit SHA itu ke-bake ke image waktu CI build (lihat `.github/workflows/ci.yml`), bukan dibaca dari `.env`, jadi selalu akurat sama image yang beneran jalan. Kalau abis merge PR nilainya belum berubah, tunggu sampai ~5 menit (interval polling Watchtower) sebelum curiga ada yang salah.
 
 ## Fase 5 — Domain asli + HTTPS via nginx
 
@@ -237,9 +235,10 @@ Backend udah punya instrumentasi OpenTelemetry bawaan (`telemetry.rs`), tinggal 
 | `docker compose ps` | status container |
 | `docker compose logs -f backend` | log realtime backend |
 | `docker compose logs -f alloy` | log realtime Alloy (collector trace) |
+| `docker compose logs -f watchtower` | log realtime Watchtower (auto-deploy backend) |
 | `docker compose restart backend` | restart tanpa pull ulang (**tidak** baca ulang `.env`) |
 | `docker compose up -d` | recreate container kalau `.env` berubah (baca ulang env) |
-| `docker compose pull backend && docker compose up -d backend` | tarik image terbaru (habis push ke `main`, CI selesai) & jalankan ulang |
+| `docker compose pull backend && docker compose up -d backend` | paksa deploy manual sekarang juga, gak nunggu Watchtower (5 menit) |
 | `docker compose down` | matikan backend (database ada di luar — Supabase, tidak kepengaruh) |
 | `df -h` / `free -h` | cek sisa disk / RAM+swap |
 | `firewall-cmd --list-all` | cek aturan firewall aktif |
