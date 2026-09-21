@@ -39,3 +39,24 @@ impl FromRequestParts<SharedState> for AuthUser {
         Ok(AuthUser(user))
     }
 }
+
+/// Like `AuthUser`, but never rejects the request — a missing or invalid
+/// session just becomes `None`. For public read endpoints that still want
+/// to show a logged-in owner their own not-yet-public content (e.g. their
+/// own draft journey) without requiring login for everyone else.
+pub struct OptionalAuthUser(pub Option<User>);
+
+#[axum::async_trait]
+impl FromRequestParts<SharedState> for OptionalAuthUser {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &SharedState,
+    ) -> Result<Self, Self::Rejection> {
+        match AuthUser::from_request_parts(parts, state).await {
+            Ok(AuthUser(user)) => Ok(OptionalAuthUser(Some(user))),
+            Err(_) => Ok(OptionalAuthUser(None)),
+        }
+    }
+}

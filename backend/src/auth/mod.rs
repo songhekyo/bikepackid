@@ -3,4 +3,4 @@ pub mod google;
 pub mod jwt;
 pub mod session;
 
-pub use extractor::AuthUser;
+pub use extractor::{AuthUser, OptionalAuthUser};

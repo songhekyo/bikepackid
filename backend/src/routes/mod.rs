@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod health;
+pub mod journey;
 pub mod me;
 
 use axum::{
@@ -48,6 +49,17 @@ pub fn router() -> Router<SharedState> {
         .route("/auth/sign-out-everywhere", post(auth::sign_out_everywhere))
         .route("/me", get(me::me))
         .route("/app/status", get(me::app_status))
+        .route("/journeys", get(journey::list).post(journey::create))
+        .route("/journeys/:id", get(journey::get).patch(journey::update))
+        .route(
+            "/journeys/:id/checkpoints",
+            get(journey::list_checkpoints).post(journey::create_checkpoint),
+        )
+        .route(
+            "/checkpoints/:id/posts",
+            get(journey::list_posts).post(journey::create_post),
+        )
+        .route("/uploads/presign-url", post(journey::presign_upload))
 }
 
 #[cfg(test)]
@@ -433,5 +445,255 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    fn journey_create_body(title: &str) -> Body {
+        Body::from(
+            serde_json::to_vec(&serde_json::json!({ "title": title }))
+                .unwrap(),
+        )
+    }
+
+    #[tokio::test]
+    async fn create_journey_is_forbidden_for_viewers() {
+        let state = test_support::app_state().await;
+        let user_id = test_support::insert_user(&state.db).await; // defaults to viewer
+        let cookie = cookie_for(&state, user_id, Role::Viewer).await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/journeys")
+                    .header("cookie", cookie)
+                    .header("content-type", "application/json")
+                    .body(journey_create_body("Viewer's trip"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        test_support::delete_user(&state.db, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn create_journey_is_ok_for_creators() {
+        let state = test_support::app_state().await;
+        let user_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+        let cookie = cookie_for(&state, user_id, Role::Creator).await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/journeys")
+                    .header("cookie", cookie)
+                    .header("content-type", "application/json")
+                    .body(journey_create_body("Creator's trip"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        test_support::delete_user(&state.db, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn get_draft_journey_is_not_found_for_an_unrelated_viewer() {
+        let state = test_support::app_state().await;
+        let owner_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+        let other_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+        let other_cookie = cookie_for(&state, other_id, Role::Creator).await;
+
+        let journey_id = test_support::insert_journey(&state.db, owner_id, "draft").await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/journeys/{journey_id}"))
+                    .header("cookie", other_cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        test_support::delete_user(&state.db, owner_id).await;
+        test_support::delete_user(&state.db, other_id).await;
+    }
+
+    #[tokio::test]
+    async fn update_journey_is_forbidden_for_a_different_creator() {
+        let state = test_support::app_state().await;
+        let owner_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+        let other_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+        let other_cookie = cookie_for(&state, other_id, Role::Creator).await;
+
+        let journey_id = test_support::insert_journey(&state.db, owner_id, "planning").await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/journeys/{journey_id}"))
+                    .header("cookie", other_cookie)
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({ "title": "hijacked" })).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        test_support::delete_user(&state.db, owner_id).await;
+        test_support::delete_user(&state.db, other_id).await;
+    }
+
+    #[tokio::test]
+    async fn update_journey_is_ok_for_a_moderator() {
+        let state = test_support::app_state().await;
+        let owner_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+        let moderator_id = test_support::insert_user_with_role(&state.db, Role::Moderator).await;
+        let moderator_cookie = cookie_for(&state, moderator_id, Role::Moderator).await;
+
+        let journey_id = test_support::insert_journey(&state.db, owner_id, "planning").await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/journeys/{journey_id}"))
+                    .header("cookie", moderator_cookie)
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({ "title": "moderated" })).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        test_support::delete_user(&state.db, owner_id).await;
+        test_support::delete_user(&state.db, moderator_id).await;
+    }
+
+    #[tokio::test]
+    async fn update_journey_is_forbidden_for_a_viewer_owner() {
+        let state = test_support::app_state().await;
+        // Owns the journey, but role has since been downgraded to viewer
+        // (e.g. banned from the app) — ownership alone must not be enough.
+        let owner_id = test_support::insert_user_with_role(&state.db, Role::Viewer).await;
+        let owner_cookie = cookie_for(&state, owner_id, Role::Viewer).await;
+
+        let journey_id = test_support::insert_journey(&state.db, owner_id, "planning").await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/journeys/{journey_id}"))
+                    .header("cookie", owner_cookie)
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({ "title": "still mine?" })).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        test_support::delete_user(&state.db, owner_id).await;
+    }
+
+    #[tokio::test]
+    async fn list_checkpoints_is_public_for_a_published_journey() {
+        let state = test_support::app_state().await;
+        let owner_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+
+        let journey_id = test_support::insert_journey(&state.db, owner_id, "published").await;
+        test_support::insert_checkpoint(&state.db, journey_id).await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/journeys/{journey_id}/checkpoints"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let checkpoints: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(checkpoints.len(), 1);
+
+        test_support::delete_user(&state.db, owner_id).await;
+    }
+
+    #[tokio::test]
+    async fn presign_upload_is_forbidden_for_viewers() {
+        let state = test_support::app_state().await;
+        let user_id = test_support::insert_user(&state.db).await; // defaults to viewer
+        let cookie = cookie_for(&state, user_id, Role::Viewer).await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/uploads/presign-url")
+                    .header("cookie", cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        test_support::delete_user(&state.db, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn presign_upload_returns_an_upload_and_public_url_for_creators() {
+        let state = test_support::app_state().await;
+        let user_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+        let cookie = cookie_for(&state, user_id, Role::Creator).await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/uploads/presign-url")
+                    .header("cookie", cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["upload_url"].as_str().unwrap().contains("X-Amz-Signature"));
+        assert!(json["public_url"].as_str().unwrap().starts_with("http"));
+
+        test_support::delete_user(&state.db, user_id).await;
     }
 }

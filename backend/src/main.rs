@@ -2,6 +2,7 @@ mod audit;
 mod auth;
 mod config;
 mod error;
+mod journey;
 mod models;
 mod routes;
 mod state;
@@ -72,12 +73,15 @@ async fn main() {
 
     let port = config.port;
 
+    let r2 = journey::storage::R2::from_config(&config);
+
     let state = Arc::new(AppState {
         db: db.clone(),
         config,
         oauth_client,
         http_client,
         pending_logins: Mutex::new(std::collections::HashMap::new()),
+        r2,
     });
 
     spawn_session_purge_task(db);

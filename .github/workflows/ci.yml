@@ -33,6 +33,14 @@ jobs:
       GOOGLE_CLIENT_SECRET: ci-test-client-secret
       GOOGLE_REDIRECT_URL: http://localhost:8080/auth/google/callback
       FRONTEND_URL: http://localhost:3000
+      # Also not real — tests only compute R2 presigned-URL signatures
+      # locally (pure math, no network call to R2), never actually hit
+      # Cloudflare. See journey::storage::tests.
+      R2_ACCOUNT_ID: ci-test-account
+      R2_ACCESS_KEY_ID: ci-test-key
+      R2_SECRET_ACCESS_KEY: ci-test-secret
+      R2_BUCKET_NAME: ci-test-bucket
+      R2_PUBLIC_URL_BASE: https://pub-ci-test.r2.dev
     steps:
       - uses: actions/checkout@v4
 

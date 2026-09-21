@@ -32,6 +32,10 @@ Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvens
 - `src/routes/auth.rs` — `/auth/google/login`, `/auth/google/callback` (termasuk redirect halus kalau user cancel di consent screen Google), `/auth/logout`.
 - `src/routes/me.rs` — `/me` (semua role login), `/app/status` (contoh route khusus `creator` ke atas).
 - `src/routes/health.rs` — `/health`, readiness check yang benar-benar nge-ping database.
+- `src/journey/mod.rs` — struct `Journey`/`Checkpoint`/`Post` + enum status (`journey_status`/`checkpoint_status`/`post_type`/`post_status`).
+- `src/journey/service.rs` — CRUD Journey/Checkpoint/Post; ownership check (`user_can_edit_journey`) diisolasi di satu fungsi; read publik lewat view `visible_checkpoints`/`visible_posts`, owner/moderator lewat tabel mentah.
+- `src/journey/storage.rs` — wrapper Cloudflare R2 (`rusty-s3`), generate presigned PUT URL buat upload foto langsung dari client ke R2 (bytes gak lewat VPS).
+- `src/routes/journey.rs` — handler `/journeys`, `/journeys/:id`, `/journeys/:id/checkpoints`, `/checkpoints/:id/posts`, `/uploads/presign-url`.
 - `src/telemetry.rs` — setup logging + (opsional) export trace OpenTelemetry.
 - `deploy/config.alloy` — config Grafana Alloy (collector OTLP lokal di production, lihat bagian Observability).
 
@@ -76,3 +80,12 @@ Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvens
 | POST | `/auth/sign-out-everywhere` | wajib login | revoke semua sesi milik user, bukan cuma yang sedang dipakai |
 | GET | `/me` | wajib login | profil user yang sedang login |
 | GET | `/app/status` | wajib login + role `creator`+ | contoh gate khusus app |
+| GET | `/journeys` | - (opsional) | list journey publik (bukan `draft`), paginated `?limit=&offset=` |
+| POST | `/journeys` | wajib login + role `creator`+ | bikin journey baru, selalu mulai sebagai `draft` |
+| GET | `/journeys/:id` | - (opsional) | 404 kalau `draft` dan bukan owner/moderator |
+| PATCH | `/journeys/:id` | owner atau moderator+ | update partial (field yang di-omit gak berubah) |
+| GET | `/journeys/:id/checkpoints` | - (opsional) | owner/moderator lihat semua, selain itu cuma yang `published` di journey non-draft |
+| POST | `/journeys/:id/checkpoints` | owner journey (role `creator`+) | terima `id` opsional dari client (buat offline-sync nanti) |
+| GET | `/checkpoints/:id/posts` | - (opsional) | aturan visibility sama, diresolve lewat journey parent-nya |
+| POST | `/checkpoints/:id/posts` | owner journey (role `creator`+) | |
+| POST | `/uploads/presign-url` | wajib login + role `creator`+ | presigned PUT URL R2 (15 menit), dipakai buat upload foto langsung dari client |
