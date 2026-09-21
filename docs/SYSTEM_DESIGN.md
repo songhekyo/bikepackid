@@ -55,6 +55,7 @@ journeys
   id, user_id, title, description, status, start_date, end_date, cover_image
   status ('draft' | 'planning' | 'published' | 'archived')
   start_lat, start_lng, end_lat, end_lng (nullable)
+  seeking_sponsor boolean (default false)
 
 track_segments        -- opsional, dari upload file GPX
   id, journey_id, geojson_linestring, source ('gpx_upload'), uploaded_at
@@ -80,7 +81,7 @@ Video di-**embed** dari YouTube/Instagram/TikTok (bukan hosting sendiri) — hem
 
 **Status journey** (beda dari checkpoint/post yang langsung `published` saat dibuat — lihat kebijakan moderasi di bawah):
 - `draft` — privat, cuma pemilik yang bisa lihat.
-- `planning` — publik, tapi trip-nya belum mulai. Buat bikepacker yang mau share rencana rute dan **cari sponsor** sebelum berangkat — deskripsi journey (field `description`) yang jadi tempat pitch-nya, bukan fitur sponsor terpisah (belum didesain, lihat "Di luar scope" di bawah).
+- `planning` — publik, tapi trip-nya belum mulai. Buat bikepacker yang mau share rencana rute dan **cari sponsor** sebelum berangkat — deskripsi journey (field `description`) yang jadi tempat pitch-nya, bukan fitur sponsor terpisah (belum didesain, lihat "Di luar scope" di bawah). `journeys.seeking_sponsor` (boolean, default `false`) — flag sederhana buat nandain "masih nyari sponsor", independen dari status: journey `planning` belum tentu masih nyari sponsor (misal udah dapet, tinggal nunggu berangkat), dan gak harus `planning` juga buat nyalain flag ini (trip yang udah `published` bisa aja masih buka slot sponsor tambahan). Bukan sistem matching/inquiry — sekadar tag yang bisa di-filter nanti begitu ada halaman "browse journey yang lagi cari sponsor" (belum dibangun sekarang, tapi kolomnya murah buat disiapin dari awal daripada migrasi tambahan nanti).
 - `published` — publik, trip lagi jalan/udah selesai, checkpoint terus ditambah.
 - `archived` — publik, udah gak aktif lagi.
 
@@ -102,6 +103,8 @@ WHERE p.status = 'published' AND c.status = 'published' AND j.status != 'draft';
 ```
 
 Kode aplikasi yang butuh checkpoint/post publik query ke view ini, bukan ke tabel mentahnya — jadi query yang bener itu sama gampangnya (bukan lebih ribet) dibanding query yang salah, gak ada alasan buat "males join" dan langsung query tabel aslinya. View ini gak nyimpen data sendiri (bukan materialized view), jadi selalu konsisten real-time, gak ada risiko data basi kayak kalau dipakai pendekatan denormalisasi/cache.
+
+**Pagination**: `GET /journeys` (feed publik lintas semua user, bakal terus nambah) pakai `?limit=&offset=` — `limit` di-clamp di handler (default 20, maks 50), response array polos tanpa `total_count`/`has_more` (client tau abis kalau baliknya lebih sedikit dari `limit`; nge-`COUNT(*)` tiap request buat metadata itu mahal buat manfaat yang kecil di tahap ini). `GET /journeys/:id/checkpoints` dan `GET /checkpoints/:id/posts` belum butuh pagination — scoped ke satu journey/checkpoint, ukurannya natural terbatas buat MVP. Kalau offset-based mulai kerasa masalahnya (drift pas ada insert baru di tengah pagination), upgrade ke cursor-based itu ganti di satu endpoint doang, gak butuh migrasi data.
 
 **Batasan desain (Monolith First)**: Journey + Checkpoint + Post dibangun sebagai satu modul di dalam backend Rust yang udah ada (bukan service terpisah) — boundary-nya jelas (tabel sendiri, diakses cuma lewat fungsi modul itu) supaya bisa diekstrak nanti kalau beneran perlu, tapi gak bayar cost distributed system (auth propagation lintas service, dll) selama belum ada alasan konkret buat mecah. `track_segments` (upload GPX) sengaja di luar scope tahap pertama — butuh dependency baru (parsing GPX, object storage) yang belum ada di codebase.
 
@@ -135,13 +138,28 @@ journey_equipment
 - Satu journey bisa punya 0+ equipment — semuanya opsional, gak ada yang wajib diisi.
 - Permission-nya sama kayak checkpoint/post: cuma pemilik journey yang bisa nambah/ubah, gak ada isu kepemilikan bersama kayak 3 item "di luar scope" di atas — makanya ini didesain sekarang walau implementasinya nyusul PR terpisah setelah loop inti (journey→checkpoint→post) kebukti jalan.
 
+### Journey Sponsors (didesain di sini, implementasi nyusul PR terpisah)
+
+Beda dari `seeking_sponsor` di atas (nandain "masih nyari") — ini buat nunjukin sponsor yang **udah deal**, ditampilin di halaman journey (misal "Didukung oleh: ..."). Sama kayak `journey_equipment`: murni informational, gak ada logic matching/inquiry/pembayaran (itu tetep bagian dari "fitur sponsor itu sendiri" yang di luar scope), jadi kompleksitasnya setara — didesain sekarang, implementasi nyusul bareng `journey_equipment`.
+
+```
+journey_sponsors
+  id, journey_id, name, logo_url (nullable), website_url (nullable),
+  notes (nullable), created_at
+  status ('published' | 'flagged' | 'removed')
+```
+
+- Kesepakatan sponsor-nya sendiri terjadi **di luar platform** (DM, email, dst) — tabel ini cuma catetan buat ditampilin, bukan tempat nego/kontrak.
+- `status` + masuk ke `reports.target_type` (`'sponsor'`) sama kayak `journey_equipment` — alasan sama: ada link luar (`website_url`) dari user, perlu jalur moderasi.
+- Satu journey bisa punya 0+ sponsor, semuanya opsional.
+
 ### Report / Moderasi (belum diimplementasikan)
 
 Kebijakan: **konten langsung tayang saat diposting** (`published`), moderator cuma bertindak kalau ada laporan — bukan approval-first. Cocok buat komunitas yang masih kecil/awal, tidak butuh moderator standby 24/7.
 
 ```
 reports
-  id, reporter_user_id, target_type ('journey'|'checkpoint'|'post'|'equipment'|'user'),
+  id, reporter_user_id, target_type ('journey'|'checkpoint'|'post'|'equipment'|'sponsor'|'user'),
   target_id, reason, status ('open'|'dismissed'|'upheld'),
   reviewed_by, reviewed_at, created_at
 ```
