@@ -72,6 +72,10 @@ pub async fn update(
     Path(journey_id): Path<Uuid>,
     Json(req): Json<UpdateJourneyRequest>,
 ) -> Result<Json<Journey>, AppError> {
+    if !user.role.can_use_app() {
+        return Err(AppError::Forbidden);
+    }
+
     let journey = journey::service::update_journey(&state.db, journey_id, &user, req).await?;
     Ok(Json(journey))
 }

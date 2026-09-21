@@ -33,6 +33,15 @@ async fn fetch_checkpoint(pool: &PgPool, checkpoint_id: Uuid) -> Result<Option<C
     Ok(checkpoint)
 }
 
+async fn fetch_post(pool: &PgPool, post_id: Uuid) -> Result<Option<Post>, AppError> {
+    let post = sqlx::query_as::<_, Post>("SELECT * FROM posts WHERE id = $1")
+        .bind(post_id)
+        .fetch_optional(pool)
+        .await?;
+
+    Ok(post)
+}
+
 pub async fn create_journey(
     pool: &PgPool,
     user_id: Uuid,
@@ -165,10 +174,16 @@ pub async fn create_checkpoint(
 
     let trigger_type = req.trigger_type.unwrap_or_else(|| "manual".to_string());
 
+    // ON CONFLICT DO UPDATE (a no-op update to the conflicting row) rather
+    // than DO NOTHING: DO NOTHING returns no row on conflict, but a client
+    // retrying a dropped-connection sync with the same `id` needs the
+    // checkpoint back, not an empty result — this is what makes the
+    // client-suppliable `id` actually idempotent (see CreateCheckpointRequest::id).
     let checkpoint = sqlx::query_as::<_, Checkpoint>(
         r#"
         INSERT INTO checkpoints (id, journey_id, lat, lng, captured_at, title, trigger_type)
         VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (id) DO UPDATE SET id = checkpoints.id
         RETURNING *
         "#,
     )
@@ -222,6 +237,17 @@ pub async fn create_post(
 
     if !user_can_edit_journey(&journey, user) {
         return Err(AppError::Forbidden);
+    }
+
+    if let Some(parent_id) = req.parent_post_id {
+        let parent = fetch_post(pool, parent_id).await?.ok_or_else(|| {
+            AppError::BadRequest("parent post must belong to the same checkpoint".to_string())
+        })?;
+        if parent.checkpoint_id != checkpoint_id {
+            return Err(AppError::BadRequest(
+                "parent post must belong to the same checkpoint".to_string(),
+            ));
+        }
     }
 
     let post = sqlx::query_as::<_, Post>(
@@ -452,6 +478,100 @@ mod tests {
         .unwrap();
 
         assert_eq!(post.checkpoint_id, checkpoint.id);
+
+        test_support::delete_user(&pool, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn create_checkpoint_with_the_same_id_twice_is_idempotent() {
+        let pool = test_support::pool().await;
+        let user_id = test_support::insert_user(&pool).await;
+        let user = test_support::fetch_user(&pool, user_id).await;
+
+        let journey = create_journey(&pool, user_id, journey_request("Retry")).await.unwrap();
+        let shared_id = Uuid::new_v4();
+
+        let req = || CreateCheckpointRequest {
+            id: Some(shared_id),
+            lat: 1.0,
+            lng: 2.0,
+            captured_at: chrono::Utc::now(),
+            title: None,
+            trigger_type: None,
+        };
+
+        let first = create_checkpoint(&pool, journey.id, &user, req()).await.unwrap();
+        let retried = create_checkpoint(&pool, journey.id, &user, req()).await.unwrap();
+
+        assert_eq!(first.id, shared_id);
+        assert_eq!(retried.id, shared_id);
+
+        test_support::delete_user(&pool, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn update_journey_to_planning_without_coordinates_is_a_bad_request() {
+        let pool = test_support::pool().await;
+        let user_id = test_support::insert_user(&pool).await;
+        let user = test_support::fetch_user(&pool, user_id).await;
+
+        let journey = create_journey(&pool, user_id, journey_request("Missing coords")).await.unwrap();
+
+        let result = update_journey(
+            &pool,
+            journey.id,
+            &user,
+            UpdateJourneyRequest { status: Some(JourneyStatus::Planning), ..Default::default() },
+        )
+        .await;
+
+        assert!(matches!(result, Err(AppError::BadRequest(_))), "expected BadRequest, got {result:?}");
+
+        test_support::delete_user(&pool, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn create_post_rejects_a_parent_post_from_a_different_checkpoint() {
+        let pool = test_support::pool().await;
+        let user_id = test_support::insert_user(&pool).await;
+        let user = test_support::fetch_user(&pool, user_id).await;
+
+        let journey = create_journey(&pool, user_id, journey_request("Two checkpoints")).await.unwrap();
+
+        let checkpoint_request = || CreateCheckpointRequest {
+            id: None,
+            lat: 1.0,
+            lng: 2.0,
+            captured_at: chrono::Utc::now(),
+            title: None,
+            trigger_type: None,
+        };
+        let checkpoint_a = create_checkpoint(&pool, journey.id, &user, checkpoint_request()).await.unwrap();
+        let checkpoint_b = create_checkpoint(&pool, journey.id, &user, checkpoint_request()).await.unwrap();
+
+        let post_under_a = create_post(
+            &pool,
+            checkpoint_a.id,
+            &user,
+            CreatePostRequest { r#type: PostType::Text, body: Some("a".to_string()), media_url: None, parent_post_id: None },
+        )
+        .await
+        .unwrap();
+
+        let result = create_post(
+            &pool,
+            checkpoint_b.id,
+            &user,
+            CreatePostRequest {
+                r#type: PostType::Text,
+                body: Some("b".to_string()),
+                media_url: None,
+                parent_post_id: Some(post_under_a.id),
+            },
+        )
+        .await;
+
+        assert!(matches!(result, Err(AppError::BadRequest(_))), "expected BadRequest, got {result:?}");
 
         test_support::delete_user(&pool, user_id).await;
     }

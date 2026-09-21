@@ -590,6 +590,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn update_journey_is_forbidden_for_a_viewer_owner() {
+        let state = test_support::app_state().await;
+        // Owns the journey, but role has since been downgraded to viewer
+        // (e.g. banned from the app) — ownership alone must not be enough.
+        let owner_id = test_support::insert_user_with_role(&state.db, Role::Viewer).await;
+        let owner_cookie = cookie_for(&state, owner_id, Role::Viewer).await;
+
+        let journey_id = test_support::insert_journey(&state.db, owner_id, "planning").await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/journeys/{journey_id}"))
+                    .header("cookie", owner_cookie)
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&serde_json::json!({ "title": "still mine?" })).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        test_support::delete_user(&state.db, owner_id).await;
+    }
+
+    #[tokio::test]
     async fn list_checkpoints_is_public_for_a_published_journey() {
         let state = test_support::app_state().await;
         let owner_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;

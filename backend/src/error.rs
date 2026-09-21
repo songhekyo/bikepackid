@@ -8,7 +8,7 @@ use serde_json::json;
 #[derive(thiserror::Error, Debug)]
 pub enum AppError {
     #[error("database error: {0}")]
-    Database(#[from] sqlx::Error),
+    Database(sqlx::Error),
 
     #[error("google oauth error: {0}")]
     Oauth(String),
@@ -24,6 +24,25 @@ pub enum AppError {
 
     #[error("not found")]
     NotFound,
+}
+
+// A CHECK constraint violation (e.g. journeys_endpoints_required_outside_draft)
+// means the client sent data that's invalid by the DB's own rules — that's
+// a 400, not a server bug, even though it arrives via the same sqlx::Error
+// as a real failure. Done here (at conversion time, via `?`) rather than in
+// `into_response` below, so callers that match on `AppError` directly
+// (tests, future service-layer logic) see `BadRequest` too, not just HTTP
+// responses.
+impl From<sqlx::Error> for AppError {
+    fn from(err: sqlx::Error) -> Self {
+        if let sqlx::Error::Database(ref db_err) = err {
+            if db_err.code().as_deref() == Some("23514") {
+                return AppError::BadRequest(db_err.message().to_string());
+            }
+        }
+
+        AppError::Database(err)
+    }
 }
 
 // Axum calls this to turn our error into an actual HTTP response whenever a
