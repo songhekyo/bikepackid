@@ -51,8 +51,14 @@ services:
   # is effectively root-equivalent access to the host — the accepted
   # tradeoff for a Docker-based auto-updater. Not a concern this compose
   # file introduces lightly: no other service gets that mount.
+  #
+  # Image is nickfedor/watchtower, not containrrr/watchtower: the original
+  # containrrr project is archived/unmaintained, and its last-published
+  # image bundles a Docker client too old to talk to modern Docker Engine
+  # ("client version 1.25 is too old" against Docker 29.x) — nickfedor's
+  # fork is the actively maintained successor.
   watchtower:
-    image: containrrr/watchtower
+    image: nickfedor/watchtower
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
