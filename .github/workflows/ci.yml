@@ -23,6 +23,16 @@ jobs:
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      # None of these are real credentials — tests build an AppState/router
+      # via `test_support::app_state()` and drive it with `oneshot`, they
+      # never make a real outbound call to Google. `Config::from_env()` just
+      # needs these present (and GOOGLE_REDIRECT_URL parseable as a URL) or
+      # it panics before any test body runs.
+      JWT_SECRET: ci-test-secret
+      GOOGLE_CLIENT_ID: ci-test-client-id
+      GOOGLE_CLIENT_SECRET: ci-test-client-secret
+      GOOGLE_REDIRECT_URL: http://localhost:8080/auth/google/callback
+      FRONTEND_URL: http://localhost:3000
     steps:
       - uses: actions/checkout@v4
 
