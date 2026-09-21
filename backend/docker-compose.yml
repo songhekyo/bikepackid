@@ -15,6 +15,11 @@ services:
     # directly from the internet.
     ports:
       - "8080:8080"
+    # Opts this container in to Watchtower below (WATCHTOWER_LABEL_ENABLE
+    # scopes it to only labeled containers) — alloy is deliberately left
+    # unlabeled, see the comment on the watchtower service for why.
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
 
   # Local OTLP collector: receives traces from the backend and forwards
   # them to Grafana Cloud with the account credentials, so the backend
@@ -31,3 +36,27 @@ services:
       GRAFANA_CLOUD_INSTANCE_ID: ${GRAFANA_CLOUD_INSTANCE_ID}
       GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY}
       GRAFANA_CLOUD_OTLP_ENDPOINT: ${GRAFANA_CLOUD_OTLP_ENDPOINT}
+
+  # Polls GHCR every 5 minutes for a new `backend` image digest and, when it
+  # finds one, pulls it and recreates the container automatically — this is
+  # what makes "merge to main" actually mean "live" without SSHing in for a
+  # manual `docker compose pull && up -d` every time (see DEPLOY.md).
+  # Scoped to WATCHTOWER_LABEL_ENABLE + the label on `backend` above on
+  # purpose: `alloy` tracks `grafana/alloy:latest` too, but we don't want it
+  # silently auto-upgrading — Alloy's config syntax has already broken once
+  # this project across versions (see docs/INFRA_HISTORY.md), so that
+  # upgrade should stay a deliberate, reviewed step, not an automatic one.
+  #
+  # Needs /var/run/docker.sock mounted to control other containers, which
+  # is effectively root-equivalent access to the host — the accepted
+  # tradeoff for a Docker-based auto-updater. Not a concern this compose
+  # file introduces lightly: no other service gets that mount.
+  watchtower:
+    image: containrrr/watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_POLL_INTERVAL: "300"
+      WATCHTOWER_CLEANUP: "true"
