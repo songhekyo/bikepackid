@@ -82,7 +82,24 @@ Video di-**embed** dari YouTube/Instagram/TikTok (bukan hosting sendiri) — hem
 - `published` — publik, trip lagi jalan/udah selesai, checkpoint terus ditambah.
 - `archived` — publik, udah gak aktif lagi.
 
-Aturan visibility yang penting: bedanya cuma `draft` vs selain-`draft` — `planning`/`published`/`archived` semua publik, bedanya cuma gimana ditampilin di frontend nanti (badge "planning" vs trip yang lagi live), bukan soal siapa yang boleh lihat. Konsekuensinya: checkpoint/post yang statusnya sendiri udah `published` **tetap gak kelihatan publik** kalau journey induknya masih `draft` — jadi cek visibility checkpoint/post harus ikut cek status journey induknya, gak cukup cek status miliknya sendiri doang.
+Aturan visibility yang penting: bedanya cuma `draft` vs selain-`draft` — `planning`/`published`/`archived` semua publik, bedanya cuma gimana ditampilin di frontend nanti (badge "planning" vs trip yang lagi live), bukan soal siapa yang boleh lihat. Konsekuensinya: checkpoint/post yang statusnya sendiri udah `published` **tetap gak kelihatan publik** kalau journey induknya masih `draft` — jadi cek visibility checkpoint/post harus ikut cek status journey induknya, gak cukup cek status miliknya sendiri doang. Post juga ikut ke-hide kalau **checkpoint**-nya (bukan cuma journey-nya) lagi `flagged`/`removed` — 3 tingkat yang harus konsisten (journey → checkpoint → post), bukan 2.
+
+Supaya aturan ini gak bergantung ke tiap developer inget nulis join yang bener tiap kali nulis query baru (gampang lupa, terutama nambah fitur baru di masa depan kayak "activity feed" yang query checkpoint/post langsung), aturannya ditegakkan lewat **Postgres VIEW**, bukan cuma konvensi kode aplikasi:
+
+```sql
+CREATE VIEW visible_checkpoints AS
+SELECT c.* FROM checkpoints c
+JOIN journeys j ON j.id = c.journey_id
+WHERE c.status = 'published' AND j.status != 'draft';
+
+CREATE VIEW visible_posts AS
+SELECT p.* FROM posts p
+JOIN checkpoints c ON c.id = p.checkpoint_id
+JOIN journeys j ON j.id = c.journey_id
+WHERE p.status = 'published' AND c.status = 'published' AND j.status != 'draft';
+```
+
+Kode aplikasi yang butuh checkpoint/post publik query ke view ini, bukan ke tabel mentahnya — jadi query yang bener itu sama gampangnya (bukan lebih ribet) dibanding query yang salah, gak ada alasan buat "males join" dan langsung query tabel aslinya. View ini gak nyimpen data sendiri (bukan materialized view), jadi selalu konsisten real-time, gak ada risiko data basi kayak kalau dipakai pendekatan denormalisasi/cache.
 
 **Batasan desain (Monolith First)**: Journey + Checkpoint + Post dibangun sebagai satu modul di dalam backend Rust yang udah ada (bukan service terpisah) — boundary-nya jelas (tabel sendiri, diakses cuma lewat fungsi modul itu) supaya bisa diekstrak nanti kalau beneran perlu, tapi gak bayar cost distributed system (auth propagation lintas service, dll) selama belum ada alasan konkret buat mecah. `track_segments` (upload GPX) sengaja di luar scope tahap pertama — butuh dependency baru (parsing GPX, object storage) yang belum ada di codebase.
 
