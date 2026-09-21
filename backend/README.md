@@ -49,6 +49,7 @@ Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvens
 
 - Session token (JWT) disimpan di cookie `httpOnly`, `SameSite=Lax`, dan `Secure` (kecuali di-override lewat `COOKIE_SECURE=false` untuk dev lokal). Masa berlaku cookie diturunkan langsung dari `expires_at` baris `sessions` (bukan konstanta terpisah yang bisa mencle dari yang di database).
 - Setiap token terikat ke baris `sessions` di database (`jti` claim) — logout/ban benar-benar mencabut akses, tidak cuma menghapus cookie di sisi client. `AuthUser` extractor memverifikasi sesi itu milik user yang diklaim JWT (bukan cuma "sesi ini valid"), dalam satu query (`session::authenticate`).
+- **`POST /auth/sign-out-everywhere`** — revoke semua sesi aktif milik user yang sedang login, bukan cuma sesi yang dipakai buat manggil endpoint ini. Berguna kalau user curiga ada sesi yang dicuri (device asing, malware, dll) dan mau cabut akses di mana pun tanpa harus tahu sesi mana yang harus dicabut satu-satu. Tercatat di `audit_logs` (`sign_out_everywhere`, termasuk jumlah sesi yang di-revoke).
 - Percobaan login yang tidak selesai (`pending_logins`, in-memory) otomatis dibersihkan setelah 10 menit supaya tidak numpuk di memori.
 - Kalau Google mengembalikan `error` (misal `access_denied` saat user cancel di consent screen) buat percobaan login yang **valid** (state dikenal & belum kedaluwarsa), backend relay nilainya apa adanya ke frontend (`{FRONTEND_URL}?error=<nilai>`) — backend tidak menafsirkan/melabeli sendiri (misal jadi `login=cancelled`); frontend yang menentukan artinya & UX-nya. Validasi `state` selalu terjadi **sebelum** cek `error`, supaya request dengan `state` sembarangan tidak bisa dapat nilai `error`-nya di-reflect balik (400 langsung).
 - Event login/logout tercatat di `audit_logs`; kegagalan menulis log itu sendiri tidak silent — masuk `tracing::error!`.
@@ -71,5 +72,6 @@ Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvens
 | GET | `/auth/google/login` | - | redirect ke halaman login Google |
 | GET | `/auth/google/callback` | - | tukar `code` dari Google, upsert user, set cookie sesi |
 | POST | `/auth/logout` | - | hapus cookie sesi |
+| POST | `/auth/sign-out-everywhere` | wajib login | revoke semua sesi milik user, bukan cuma yang sedang dipakai |
 | GET | `/me` | wajib login | profil user yang sedang login |
 | GET | `/app/status` | wajib login + role `creator`+ | contoh gate khusus app |

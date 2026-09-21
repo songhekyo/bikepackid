@@ -44,6 +44,7 @@ pub fn router() -> Router<SharedState> {
         .route("/health", get(health::health))
         .merge(google_oauth_routes)
         .route("/auth/logout", post(auth::logout))
+        .route("/auth/sign-out-everywhere", post(auth::sign_out_everywhere))
         .route("/me", get(me::me))
         .route("/app/status", get(me::app_status))
 }
@@ -134,6 +135,106 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
         test_support::delete_user(&state.db, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn sign_out_everywhere_revokes_every_session_for_the_caller() {
+        let state = test_support::app_state().await;
+        let user_id = test_support::insert_user(&state.db).await;
+        let cookie_a = cookie_for(&state, user_id, Role::Viewer).await;
+        let cookie_b = cookie_for(&state, user_id, Role::Viewer).await;
+
+        let app = router().with_state(state.clone());
+
+        // Both sessions work before signing out everywhere.
+        for cookie in [&cookie_a, &cookie_b] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri("/me")
+                        .header("cookie", cookie.clone())
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/sign-out-everywhere")
+                    .header("cookie", cookie_a.clone())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+        // Both cookies are now unauthorized, including the one used to
+        // call the endpoint itself.
+        for cookie in [&cookie_a, &cookie_b] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri("/me")
+                        .header("cookie", cookie.clone())
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        }
+
+        test_support::delete_user(&state.db, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn sign_out_everywhere_does_not_touch_another_users_session() {
+        let state = test_support::app_state().await;
+        let target_id = test_support::insert_user(&state.db).await;
+        let other_id = test_support::insert_user(&state.db).await;
+        let target_cookie = cookie_for(&state, target_id, Role::Viewer).await;
+        let other_cookie = cookie_for(&state, other_id, Role::Viewer).await;
+
+        let app = router().with_state(state.clone());
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/sign-out-everywhere")
+                    .header("cookie", target_cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/me")
+                    .header("cookie", other_cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        test_support::delete_user(&state.db, target_id).await;
+        test_support::delete_user(&state.db, other_id).await;
     }
 
     #[tokio::test]
