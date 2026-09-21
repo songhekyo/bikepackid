@@ -53,6 +53,7 @@ Default role saat daftar via web: `viewer`.
 ```
 journeys
   id, user_id, title, description, status, start_date, end_date, cover_image
+  status ('draft' | 'planning' | 'published' | 'archived')
 
 track_segments        -- opsional, dari upload file GPX
   id, journey_id, geojson_linestring, source ('gpx_upload'), uploaded_at
@@ -70,6 +71,23 @@ posts                  -- konten nempel ke checkpoint
 Alur pengisian lokasi: **manual trigger** (tap "Tambah Titik" → HP ambil GPS lewat Geolocation API sekali saat itu) atau **retroaktif** (drop pin di peta / cari nama tempat via geocoding). User tidak pernah input angka lat/long langsung. GPX upload independen dari checkpoint — cuma buat gambar garis rute penuh di peta.
 
 Video di-**embed** dari YouTube/Instagram/TikTok (bukan hosting sendiri) — hemat biaya storage/bandwidth.
+
+**Status journey** (beda dari checkpoint/post yang langsung `published` saat dibuat — lihat kebijakan moderasi di bawah):
+- `draft` — privat, cuma pemilik yang bisa lihat.
+- `planning` — publik, tapi trip-nya belum mulai. Buat bikepacker yang mau share rencana rute dan **cari sponsor** sebelum berangkat — deskripsi journey (field `description`) yang jadi tempat pitch-nya, bukan fitur sponsor terpisah (belum didesain, lihat "Di luar scope" di bawah).
+- `published` — publik, trip lagi jalan/udah selesai, checkpoint terus ditambah.
+- `archived` — publik, udah gak aktif lagi.
+
+Aturan visibility yang penting: bedanya cuma `draft` vs selain-`draft` — `planning`/`published`/`archived` semua publik, bedanya cuma gimana ditampilin di frontend nanti (badge "planning" vs trip yang lagi live), bukan soal siapa yang boleh lihat. Konsekuensinya: checkpoint/post yang statusnya sendiri udah `published` **tetap gak kelihatan publik** kalau journey induknya masih `draft` — jadi cek visibility checkpoint/post harus ikut cek status journey induknya, gak cukup cek status miliknya sendiri doang.
+
+**Batasan desain (Monolith First)**: Journey + Checkpoint + Post dibangun sebagai satu modul di dalam backend Rust yang udah ada (bukan service terpisah) — boundary-nya jelas (tabel sendiri, diakses cuma lewat fungsi modul itu) supaya bisa diekstrak nanti kalau beneran perlu, tapi gak bayar cost distributed system (auth propagation lintas service, dll) selama belum ada alasan konkret buat mecah. `track_segments` (upload GPX) sengaja di luar scope tahap pertama — butuh dependency baru (parsing GPX, object storage) yang belum ada di codebase.
+
+**Di luar scope tahap pertama** (dicatat di sini biar gak hilang dari diskusi, tapi sengaja ditunda sampai ada kebutuhan nyata):
+- **Shared journey** — dua bikepacker yang jalan bareng dan mau journey-nya dimiliki bersama (bukan cuma satu `user_id`). Butuh tabel kolaborator + alur invite + keputusan soal siapa boleh apa — kompleksitas produk yang lebih besar dari sekadar skema data.
+- **Shared post lintas journey** — dua bikepacker yang jalan **terpisah** (journey masing-masing, mulai dari tempat beda), ketemu di satu titik, dan mau pakai post yang sama di titik itu, lalu pisah lagi. Beda dari shared journey — ini butuh relasi many-to-many antara post dan checkpoint (satu post bisa nempel di checkpoint lebih dari satu journey), bukan kepemilikan bersama satu journey.
+- **Fitur sponsor itu sendiri** (entity sponsor, form kontak/inquiry, pembayaran) — status `planning` di atas cuma bikin journey kelihatan publik lebih awal, gak termasuk tooling buat sponsor beneran connect ke bikepacker-nya.
+
+Ketiganya dirancang supaya **aditif** kalau nanti dibangun — gak butuh migrasi yang ngubah/hapus kolom yang udah ada, cuma nambah tabel baru.
 
 ### Report / Moderasi (belum diimplementasikan)
 
