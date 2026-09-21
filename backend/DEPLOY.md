@@ -128,6 +128,12 @@ docker compose logs -f backend
 ```
 Migrasi database jalan otomatis saat backend start — cari baris `bikepackid backend listening on port 8080` di log, tanpa `panicked at ...` sebelumnya.
 
+Cek **commit mana** yang lagi live (gak perlu inspect digest image manual):
+```bash
+curl https://domain-kamu/version
+```
+Balasnya `{"git_sha": "<commit sha>"}` — commit SHA itu ke-bake ke image waktu CI build (lihat `.github/workflows/ci.yml`), bukan dibaca dari `.env`, jadi selalu akurat sama image yang beneran jalan.
+
 ## Fase 5 — Domain asli + HTTPS via nginx
 
 1. Di DNS provider domain kamu, bikin **A record** menunjuk ke IP server:

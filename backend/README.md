@@ -69,6 +69,7 @@ Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvens
 | Method | Path | Auth | Keterangan |
 |---|---|---|---|
 | GET | `/health` | - | readiness check (ping database) |
+| GET | `/version` | - | commit SHA baked in at build time — cek versi yang lagi live tanpa SSH |
 | GET | `/auth/google/login` | - | redirect ke halaman login Google |
 | GET | `/auth/google/callback` | - | tukar `code` dari Google, upsert user, set cookie sesi |
 | POST | `/auth/logout` | - | hapus cookie sesi |
