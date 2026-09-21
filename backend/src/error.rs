@@ -21,6 +21,9 @@ pub enum AppError {
 
     #[error("forbidden")]
     Forbidden,
+
+    #[error("not found")]
+    NotFound,
 }
 
 // Axum calls this to turn our error into an actual HTTP response whenever a
@@ -42,6 +45,7 @@ impl IntoResponse for AppError {
             }
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized".to_string()),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "forbidden".to_string()),
+            AppError::NotFound => (StatusCode::NOT_FOUND, "not found".to_string()),
         };
 
         (status, Json(json!({ "error": message }))).into_response()

@@ -19,6 +19,12 @@ impl Role {
     pub fn can_use_app(&self) -> bool {
         !matches!(self, Role::Viewer)
     }
+
+    /// Moderator-and-above can act on content they don't own (e.g. see a
+    /// draft journey, edit someone else's journey during moderation).
+    pub fn can_moderate(&self) -> bool {
+        matches!(self, Role::Moderator | Role::Admin | Role::Superadmin)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -43,5 +49,14 @@ mod tests {
         assert!(Role::Moderator.can_use_app());
         assert!(Role::Admin.can_use_app());
         assert!(Role::Superadmin.can_use_app());
+    }
+
+    #[test]
+    fn only_moderator_and_above_can_moderate() {
+        assert!(!Role::Viewer.can_moderate());
+        assert!(!Role::Creator.can_moderate());
+        assert!(Role::Moderator.can_moderate());
+        assert!(Role::Admin.can_moderate());
+        assert!(Role::Superadmin.can_moderate());
     }
 }
