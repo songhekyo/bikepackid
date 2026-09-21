@@ -18,6 +18,15 @@ RUN cargo build --release && rm -rf src
 
 COPY src ./src
 COPY migrations ./migrations
+
+# Set right before the real build (not above, next to the dependency-only
+# build) so a changing commit SHA doesn't invalidate the dependency-layer
+# cache. Baked in via `option_env!` in src/routes/health.rs, not read at
+# container runtime — exposed at GET /version to confirm what's deployed
+# without SSHing in to inspect Docker image digests.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
+
 # Without this, cargo may see main.rs's mtime as older than the cached
 # build output and skip recompiling the real source.
 RUN touch src/main.rs && cargo build --release

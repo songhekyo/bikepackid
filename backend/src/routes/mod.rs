@@ -42,6 +42,7 @@ pub fn router() -> Router<SharedState> {
 
     Router::new()
         .route("/health", get(health::health))
+        .route("/version", get(health::version))
         .merge(google_oauth_routes)
         .route("/auth/logout", post(auth::logout))
         .route("/auth/sign-out-everywhere", post(auth::sign_out_everywhere))
@@ -67,6 +68,27 @@ mod tests {
         let (session_id, expires_at) = session::create(&state.db, user_id).await.unwrap();
         let token = jwt::issue(user_id, role, session_id, expires_at, &state.config.jwt_secret);
         format!("session={token}")
+    }
+
+    #[tokio::test]
+    async fn version_reports_a_git_sha() {
+        let state = test_support::app_state().await;
+        let app = router().with_state(state);
+
+        let response = app
+            .oneshot(Request::builder().uri("/version").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        // Local `cargo test` never sets GIT_SHA (only the Docker build
+        // does), so "dev" is the expected value here — this just proves
+        // the endpoint responds with the field, not a specific commit.
+        assert_eq!(json["git_sha"], "dev");
     }
 
     #[tokio::test]
