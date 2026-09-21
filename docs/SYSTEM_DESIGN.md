@@ -54,6 +54,7 @@ Default role saat daftar via web: `viewer`.
 journeys
   id, user_id, title, description, status, start_date, end_date, cover_image
   status ('draft' | 'planning' | 'published' | 'archived')
+  start_lat, start_lng, end_lat, end_lng (nullable)
 
 track_segments        -- opsional, dari upload file GPX
   id, journey_id, geojson_linestring, source ('gpx_upload'), uploaded_at
@@ -69,6 +70,8 @@ posts                  -- konten nempel ke checkpoint
 ```
 
 Alur pengisian lokasi: **manual trigger** (tap "Tambah Titik" → HP ambil GPS lewat Geolocation API sekali saat itu) atau **retroaktif** (drop pin di peta / cari nama tempat via geocoding). User tidak pernah input angka lat/long langsung. GPX upload independen dari checkpoint — cuma buat gambar garis rute penuh di peta.
+
+`journeys.start_lat/start_lng` dan `end_lat/end_lng` — titik awal & akhir rencana rute, diisi lewat cara yang sama (drop pin / cari nama tempat via geocoding, bukan input angka manual), konsisten sama prinsip di atas. Bedanya sama `checkpoints`: dua kolom ini cuma nunjukin **titik ujung rencana** (berguna khusus buat journey yang masih `planning` — belum ada checkpoint sama sekali karena trip belum mulai, jadi ini satu-satunya info lokasi yang bisa ditampilin di peta buat pitch sponsor), bukan titik-titik yang dilewatin selama perjalanan (itu tugas `checkpoints`). Kolomnya **nullable** di database (biar journey `draft` yang masih ditulis/belum lengkap tetap bisa disimpan), tapi **wajib** — validasi di level aplikasi: journey gak boleh pindah dari `draft` ke `planning`/`published` kalau `start_lat/start_lng` **atau** `end_lat/end_lng` belum keisi.
 
 Video di-**embed** dari YouTube/Instagram/TikTok (bukan hosting sendiri) — hemat biaya storage/bandwidth.
 
