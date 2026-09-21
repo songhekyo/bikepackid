@@ -60,7 +60,8 @@ track_segments        -- opsional, dari upload file GPX
   id, journey_id, geojson_linestring, source ('gpx_upload'), uploaded_at
 
 checkpoints            -- titik lokasi manual-trigger
-  id, journey_id, lat, lng, captured_at, title, trigger_type ('manual')
+  id, journey_id, lat, lng, captured_at, title
+  trigger_type ('manual' | 'retroactive')
   status ('published' | 'flagged' | 'removed')
 
 posts                  -- konten nempel ke checkpoint
@@ -71,7 +72,7 @@ posts                  -- konten nempel ke checkpoint
 
 Alur pengisian lokasi: **manual trigger** (tap "Tambah Titik" → HP ambil GPS lewat Geolocation API sekali saat itu) atau **retroaktif** (drop pin di peta / cari nama tempat via geocoding). User tidak pernah input angka lat/long langsung. GPX upload independen dari checkpoint — cuma buat gambar garis rute penuh di peta.
 
-`journeys.start_lat/start_lng` dan `end_lat/end_lng` — titik awal & akhir rencana rute, diisi lewat cara yang sama (drop pin / cari nama tempat via geocoding, bukan input angka manual), konsisten sama prinsip di atas. Bedanya sama `checkpoints`: dua kolom ini cuma nunjukin **titik ujung rencana** (berguna khusus buat journey yang masih `planning` — belum ada checkpoint sama sekali karena trip belum mulai, jadi ini satu-satunya info lokasi yang bisa ditampilin di peta buat pitch sponsor), bukan titik-titik yang dilewatin selama perjalanan (itu tugas `checkpoints`). Kolomnya **nullable** di database (biar journey `draft` yang masih ditulis/belum lengkap tetap bisa disimpan), tapi **wajib** — validasi di level aplikasi: journey gak boleh pindah dari `draft` ke `planning`/`published` kalau `start_lat/start_lng` **atau** `end_lat/end_lng` belum keisi.
+`journeys.start_lat/start_lng` dan `end_lat/end_lng` — titik awal & akhir rencana rute, diisi lewat cara yang sama (drop pin / cari nama tempat via geocoding, bukan input angka manual), konsisten sama prinsip di atas. Bedanya sama `checkpoints`: dua kolom ini cuma nunjukin **titik ujung rencana** (berguna khusus buat journey yang masih `planning` — belum ada checkpoint sama sekali karena trip belum mulai, jadi ini satu-satunya info lokasi yang bisa ditampilin di peta buat pitch sponsor), bukan titik-titik yang dilewatin selama perjalanan (itu tugas `checkpoints`). Kolomnya **nullable** di database (biar journey `draft` yang masih ditulis/belum lengkap tetap bisa disimpan), tapi **wajib** begitu keluar dari `draft` — ditegakkan lewat `CHECK` constraint di database (`status = 'draft' OR (start_lat IS NOT NULL AND start_lng IS NOT NULL AND end_lat IS NOT NULL AND end_lng IS NOT NULL)`), bukan cuma validasi di kode aplikasi. Ini sengaja di level database supaya invariant-nya terjamin walau ada jalur lain yang nyentuh tabel ini nanti (endpoint baru, script backfill, dll) — bukan bergantung ke tiap developer inget nulis pengecekan yang sama berulang-ulang.
 
 Video di-**embed** dari YouTube/Instagram/TikTok (bukan hosting sendiri) — hemat biaya storage/bandwidth.
 
@@ -106,11 +107,12 @@ equipment_categories      -- lookup table, bukan enum
 journey_equipment
   id, journey_id, category_id, name, brand (nullable),
   product_url (nullable), notes, created_at
+  status ('published' | 'flagged' | 'removed')
 ```
 
 - **`category_id`** — FK ke `equipment_categories`, **bukan teks bebas**. Alasan pakai lookup table dan bukan Postgres `ENUM`: taksonomi gear bikepacking terus nambah (kategori baru kayak "power bank"/"GPS device" bisa muncul kapan aja), dan nambah value ke `ENUM` butuh migration setiap kali — nambah baris ke lookup table enggak. FK juga nyegah typo/duplikat ('Bike' vs 'bike' vs 'bicycle') yang bisa kejadian kalau teks bebas.
 - **`brand`** — opsional, teks bebas. Berguna buat matching ke produk beneran nanti.
-- **`product_url`** — opsional, link luar (misal link affiliate/toko tempat beli). Ini seam murah ke commerce **sekarang**, bukan bangun infrastruktur marketplace beneran — begitu ada tabel `products` sungguhan di Fase 4, tinggal nambah kolom `product_id` (nullable FK) di sampingnya, additive lagi.
+- **`product_url`** — opsional, link luar (misal link affiliate/toko tempat beli). Ini seam murah ke commerce **sekarang**, bukan bangun infrastruktur marketplace beneran — begitu ada tabel `products` sungguhan di Fase 4, tinggal nambah kolom `product_id` (nullable FK) di sampingnya, additive lagi. Karena ini link luar dari user (bebas isi apa aja, termasuk berpotensi disalahgunakan buat link spam/phishing), `journey_equipment` ikut ke-cover sistem Report/Moderasi di bawah (`status` + `target_type = 'equipment'`) — bukan satu-satunya user-generated content yang gak ada jalur moderasinya.
 - Satu journey bisa punya 0+ equipment — semuanya opsional, gak ada yang wajib diisi.
 - Permission-nya sama kayak checkpoint/post: cuma pemilik journey yang bisa nambah/ubah, gak ada isu kepemilikan bersama kayak 3 item "di luar scope" di atas — makanya ini didesain sekarang walau implementasinya nyusul PR terpisah setelah loop inti (journey→checkpoint→post) kebukti jalan.
 
@@ -120,7 +122,7 @@ Kebijakan: **konten langsung tayang saat diposting** (`published`), moderator cu
 
 ```
 reports
-  id, reporter_user_id, target_type ('journey'|'checkpoint'|'post'|'user'),
+  id, reporter_user_id, target_type ('journey'|'checkpoint'|'post'|'equipment'|'user'),
   target_id, reason, status ('open'|'dismissed'|'upheld'),
   reviewed_by, reviewed_at, created_at
 ```
