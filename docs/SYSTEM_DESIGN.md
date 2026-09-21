@@ -92,6 +92,22 @@ Aturan visibility yang penting: bedanya cuma `draft` vs selain-`draft` — `plan
 
 Ketiganya dirancang supaya **aditif** kalau nanti dibangun — gak butuh migrasi yang ngubah/hapus kolom yang udah ada, cuma nambah tabel baru.
 
+### Journey Equipment (didesain di sini, implementasi nyusul PR terpisah)
+
+Bikepacker sering mau nunjukin gear yang dipakai di satu journey — bukan cuma sepeda, tapi juga kamera, helm, tenda, dll. Awalnya dipikir sebagai "bikecheck" (khusus sepeda), tapi digeneralisasi jadi satu konsep equipment/gear yang fleksibel, karena tiap item — apapun kategorinya — bakal jadi titik koneksi yang sama ke commerce nanti (Fase 4): orang liat journey, liat gear apa yang dipakai, klik buat beli barang yang sama.
+
+```
+journey_equipment
+  id, journey_id, category, name, brand (nullable),
+  product_url (nullable), notes, created_at
+```
+
+- **`category`** — teks bebas ('bike', 'tires', 'groupset', 'bags', 'camera', 'helmet', 'tent', 'stove', dst), bukan enum. Taksonomi gear bikepacking itu luas dan terus nambah (ini juga kenapa gak dipisah jadi tabel per kategori kayak `bikechecks`/`bikecheck_items` — satu tabel flat lebih pas buat daftar gear yang jenisnya macem-macem).
+- **`brand`** — opsional, teks bebas. Berguna buat matching ke produk beneran nanti.
+- **`product_url`** — opsional, link luar (misal link affiliate/toko tempat beli). Ini seam murah ke commerce **sekarang**, bukan bangun infrastruktur marketplace beneran — begitu ada tabel `products` sungguhan di Fase 4, tinggal nambah kolom `product_id` (nullable FK) di sampingnya, additive lagi.
+- Satu journey bisa punya 0+ equipment — semuanya opsional, gak ada yang wajib diisi.
+- Permission-nya sama kayak checkpoint/post: cuma pemilik journey yang bisa nambah/ubah, gak ada isu kepemilikan bersama kayak 3 item "di luar scope" di atas — makanya ini didesain sekarang walau implementasinya nyusul PR terpisah setelah loop inti (journey→checkpoint→post) kebukti jalan.
+
 ### Report / Moderasi (belum diimplementasikan)
 
 Kebijakan: **konten langsung tayang saat diposting** (`published`), moderator cuma bertindak kalau ada laporan — bukan approval-first. Cocok buat komunitas yang masih kecil/awal, tidak butuh moderator standby 24/7.
