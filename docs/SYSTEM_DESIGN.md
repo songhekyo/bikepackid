@@ -2,7 +2,7 @@
 
 Portal media + marketplace untuk komunitas bikepacker Indonesia. Dokumen ini merangkum keputusan desain sistem yang sudah diambil, supaya tidak hilang di percakapan dan bisa jadi acuan pengembangan lanjutan.
 
-Status implementasi saat ini: **sistem User (login Google OAuth + role) sudah dibangun** di `backend/` (Rust/Axum/Postgres). Entity lain di bawah ini (Journey, Checkpoint, Post, Report, Marketplace) **belum diimplementasikan** — statusnya rencana/desain.
+Status implementasi saat ini: **sistem User** (login Google OAuth + role) dan **Journey/Checkpoint/Post inti** (termasuk upload foto ke R2) **sudah dibangun** di `backend/` (Rust/Axum/Postgres). Entity lain di bawah ini (TrackSegment, Journey Equipment, Journey Sponsors, Report, Marketplace) **belum diimplementasikan** — statusnya rencana/desain.
 
 ## Roadmap
 
@@ -48,7 +48,7 @@ users
 
 Default role saat daftar via web: `viewer`.
 
-### Journey, TrackSegment, Checkpoint, Post (belum diimplementasikan)
+### Journey, Checkpoint, Post (✅ diimplementasikan), TrackSegment (belum)
 
 ```
 journeys

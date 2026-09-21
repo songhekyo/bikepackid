@@ -23,38 +23,38 @@ Kebanyakan langkah ini dilakuin **manual di dashboard Cloudflare** — gak bisa 
 Loop inti: create journey → checkpoint → post. Semua yang lain nunggu ini kelar duluan.
 
 ### Migrasi
-- [ ] `0005_create_journeys.sql` — tabel `journeys` (status enum 4 nilai: `draft`/`planning`/`published`/`archived`; `start_lat`/`start_lng`/`end_lat`/`end_lng` nullable; `seeking_sponsor` boolean default `false`; `donation_url` nullable; `CHECK` constraint: wajib ada start/end lat-lng begitu keluar dari `draft`)
-- [ ] `0006_create_checkpoints.sql` — tabel `checkpoints` (status enum `published`/`flagged`/`removed`; `trigger_type` `manual`/`retroactive`)
-- [ ] `0007_create_posts.sql` — tabel `posts` (`checkpoint_id` NOT NULL — keputusan final, gak ada post level-journey; status enum sama kayak checkpoint)
-- [ ] `0008_create_visibility_views.sql` — `visible_checkpoints` dan `visible_posts` (VIEW, bukan materialized) — harus setelah 3 tabel di atas karena join ke semuanya
+- [x] `0005_create_journeys.sql` — tabel `journeys` (status enum 4 nilai: `draft`/`planning`/`published`/`archived`; `start_lat`/`start_lng`/`end_lat`/`end_lng` nullable; `seeking_sponsor` boolean default `false`; `donation_url` nullable; `CHECK` constraint: wajib ada start/end lat-lng begitu keluar dari `draft`)
+- [x] `0006_create_checkpoints.sql` — tabel `checkpoints` (status enum `published`/`flagged`/`removed`; `trigger_type` `manual`/`retroactive`)
+- [x] `0007_create_posts.sql` — tabel `posts` (`checkpoint_id` NOT NULL — keputusan final, gak ada post level-journey; status enum sama kayak checkpoint)
+- [x] `0008_create_visibility_views.sql` — `visible_checkpoints` dan `visible_posts` (VIEW, bukan materialized) — harus setelah 3 tabel di atas karena join ke semuanya
 
 ### Kode Rust
-- [ ] `src/error.rs` — tambah varian `AppError::NotFound` → `StatusCode::NOT_FOUND`
-- [ ] `src/journey/mod.rs` — struct `Journey`/`Checkpoint`/`Post` + enum status (`sqlx::FromRow`, `Serialize`, pola sama kayak `models/user.rs`)
-- [ ] `src/journey/service.rs` — `create_journey`, `get_journey`, `list_public_journeys` (pagination `limit`/`offset`, clamp maks 50), `update_journey`, `create_checkpoint`, `list_checkpoints`, `create_post`, `list_posts`; ownership check (`user_id` cocok atau role `moderator`+) diisolasi di satu fungsi biar gampang di-extend pas ada collaborator nanti
-- [ ] `src/routes/journey.rs` — handler tipis, pola sama kayak `routes/me.rs`; reads public (query ke `visible_checkpoints`/`visible_posts`, bukan tabel mentah), writes butuh `AuthUser` + `role.can_use_app()`
-- [ ] `src/routes/mod.rs` — `pub mod journey;` + wire 4 route (`/journeys`, `/journeys/:id`, `/journeys/:id/checkpoints`, `/checkpoints/:id/posts`)
-- [ ] `src/main.rs` — `mod journey;`
+- [x] `src/error.rs` — tambah varian `AppError::NotFound` → `StatusCode::NOT_FOUND`
+- [x] `src/journey/mod.rs` — struct `Journey`/`Checkpoint`/`Post` + enum status (`sqlx::FromRow`, `Serialize`, pola sama kayak `models/user.rs`)
+- [x] `src/journey/service.rs` — `create_journey`, `get_journey`, `list_public_journeys` (pagination `limit`/`offset`, clamp maks 50), `update_journey`, `create_checkpoint`, `list_checkpoints`, `create_post`, `list_posts`; ownership check (`user_id` cocok atau role `moderator`+) diisolasi di satu fungsi biar gampang di-extend pas ada collaborator nanti
+- [x] `src/routes/journey.rs` — handler tipis, pola sama kayak `routes/me.rs`; reads public (query ke `visible_checkpoints`/`visible_posts`, bukan tabel mentah), writes butuh `AuthUser` + `role.can_use_app()`
+- [x] `src/routes/mod.rs` — `pub mod journey;` + wire route (`/journeys`, `/journeys/:id`, `/journeys/:id/checkpoints`, `/checkpoints/:id/posts`, `/uploads/presign-url`)
+- [x] `src/main.rs` — `mod journey;`
 
 ### Upload foto (perlu Task 0 kelar duluan)
-- [ ] `Cargo.toml` — dependency S3-compatible client (cek opsi paling ringan buat generate presigned URL — belum tentu butuh SDK penuh kayak `aws-sdk-s3` kalau cuma buat sign URL)
-- [ ] `AppState` — tambah field client/config R2
-- [ ] Endpoint `POST /journeys/:id/checkpoints/:id/upload-url` (atau serupa) — return presigned PUT URL, App upload foto langsung ke R2, backend cuma nyimpen URL publik hasilnya ke `posts.media_url`/`journeys.cover_image` setelah upload sukses
-- [ ] `post.type` tambah `'photo'` di enum
+- [x] `Cargo.toml` — dependency S3-compatible client (`rusty-s3`, presigned-URL-only — lebih ringan dari `aws-sdk-s3` buat build time)
+- [x] `AppState` — tambah field client/config R2
+- [x] Endpoint `POST /uploads/presign-url` — return presigned PUT URL, App upload foto langsung ke R2, backend cuma nyimpen URL publik hasilnya ke `posts.media_url`/`journeys.cover_image` setelah upload sukses
+- [x] `post.type` tambah `'photo'` di enum
 
 ### Checkpoint ID (buat offline-sync nanti)
-- [ ] `create_checkpoint` nerima `id` opsional dari client (bukan asumsi server yang selalu generate) — App (creator) bakal butuh ini pas offline-sync dibangun, jangan sampai jadi breaking change belakangan
+- [x] `create_checkpoint` nerima `id` opsional dari client (bukan asumsi server yang selalu generate) — App (creator) bakal butuh ini pas offline-sync dibangun, jangan sampai jadi breaking change belakangan
 
 ### Test
-- [ ] `test_support.rs` — `insert_journey(pool, user_id, status)`, `insert_checkpoint(pool, journey_id)`
-- [ ] Unit test `journey/service.rs`: create+get roundtrip; `list_public_journeys` exclude draft, include planning/published/archived; checkpoint di journey draft gak nongol di list publik walau checkpoint-nya sendiri `published`; ownership check nolak non-owner non-moderator
-- [ ] Router test `routes/mod.rs`: `POST /journeys` viewer→403, creator→201; `GET /journeys/:id` draft ke non-owner→404; `PATCH /journeys/:id` beda creator→403, moderator→200
+- [x] `test_support.rs` — `insert_journey(pool, user_id, status)`, `insert_checkpoint(pool, journey_id)`
+- [x] Unit test `journey/service.rs`: create+get roundtrip; `list_public_journeys` exclude draft, include planning/published/archived; checkpoint di journey draft gak nongol di list publik walau checkpoint-nya sendiri `published`; ownership check nolak non-owner non-moderator
+- [x] Router test `routes/mod.rs`: `POST /journeys` viewer→403, creator→201; `GET /journeys/:id` draft ke non-owner→404; `PATCH /journeys/:id` beda creator→403, moderator→200
 
 ### Docs & verifikasi
-- [ ] `backend/README.md` — endpoint table + Struktur list (`src/journey/`)
-- [ ] `cargo build` / `cargo test` / `cargo clippy --all-targets -- -D warnings` bersih
-- [ ] Smoke test manual: draft→404 publik, `planning`→200+checkpoint/post ikut kelihatan
-- [ ] Commit, push, PR
+- [x] `backend/README.md` — endpoint table + Struktur list (`src/journey/`)
+- [x] `cargo build` / `cargo test` / `cargo clippy --all-targets -- -D warnings` bersih
+- [x] Smoke test: CHECK constraint diverifikasi manual di Postgres (draft insert tanpa lat/lng lolos, planning insert tanpa lat/lng ditolak DB)
+- [x] Commit, push, PR (nyambung ke PR #17 yang masih kebuka)
 
 ## Task 2 — Journey Equipment (nunggu Task 1)
 
