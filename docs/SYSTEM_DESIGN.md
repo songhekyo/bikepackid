@@ -56,6 +56,7 @@ journeys
   status ('draft' | 'planning' | 'published' | 'archived')
   start_lat, start_lng, end_lat, end_lng (nullable)
   seeking_sponsor boolean (default false)
+  donation_url text (nullable)
 
 track_segments        -- opsional, dari upload file GPX
   id, journey_id, geojson_linestring, source ('gpx_upload'), uploaded_at
@@ -81,7 +82,7 @@ Video di-**embed** dari YouTube/Instagram/TikTok (bukan hosting sendiri) — hem
 
 **Status journey** (beda dari checkpoint/post yang langsung `published` saat dibuat — lihat kebijakan moderasi di bawah):
 - `draft` — privat, cuma pemilik yang bisa lihat.
-- `planning` — publik, tapi trip-nya belum mulai. Buat bikepacker yang mau share rencana rute dan **cari sponsor** sebelum berangkat — deskripsi journey (field `description`) yang jadi tempat pitch-nya, bukan fitur sponsor terpisah (belum didesain, lihat "Di luar scope" di bawah). `journeys.seeking_sponsor` (boolean, default `false`) — flag sederhana buat nandain "masih nyari sponsor", independen dari status: journey `planning` belum tentu masih nyari sponsor (misal udah dapet, tinggal nunggu berangkat), dan gak harus `planning` juga buat nyalain flag ini (trip yang udah `published` bisa aja masih buka slot sponsor tambahan). Bukan sistem matching/inquiry — sekadar tag yang bisa di-filter nanti begitu ada halaman "browse journey yang lagi cari sponsor" (belum dibangun sekarang, tapi kolomnya murah buat disiapin dari awal daripada migrasi tambahan nanti).
+- `planning` — publik, tapi trip-nya belum mulai. Buat bikepacker yang mau share rencana rute dan **cari sponsor** sebelum berangkat — deskripsi journey (field `description`) yang jadi tempat pitch-nya, bukan fitur sponsor terpisah (belum didesain, lihat "Di luar scope" di bawah). `journeys.seeking_sponsor` (boolean, default `false`) — flag sederhana buat nandain "masih nyari sponsor", independen dari status: journey `planning` belum tentu masih nyari sponsor (misal udah dapet, tinggal nunggu berangkat), dan gak harus `planning` juga buat nyalain flag ini (trip yang udah `published` bisa aja masih buka slot sponsor tambahan). Bukan sistem matching/inquiry — sekadar tag yang bisa di-filter nanti begitu ada halaman "browse journey yang lagi cari sponsor" (belum dibangun sekarang, tapi kolomnya murah buat disiapin dari awal daripada migrasi tambahan nanti). `journeys.donation_url` (teks bebas, nullable) — link keluar ke platform donasi yang udah handle pembayaran sendiri (Saweria/Trakteer/Ko-fi/dst, bikepacker pilih sendiri). Bukan bikin payment processing sendiri — gak ada alasan duplikasi yang udah diselesein dengan baik sama platform yang udah establish. Sama kayak `product_url`/`website_url` di tempat lain: link luar apa adanya, gak divalidasi formatnya, backend gak pernah pegang duit sama sekali.
 - `published` — publik, trip lagi jalan/udah selesai, checkpoint terus ditambah.
 - `archived` — publik, udah gak aktif lagi.
 
