@@ -37,6 +37,21 @@ pub async fn revoke(pool: &PgPool, session_id: Uuid) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Revokes every active (not already revoked) session belonging to a user.
+/// Used by "sign out everywhere" — unlike `revoke`, this isn't scoped to
+/// one session id, so a stolen/forgotten session anywhere gets cut off in
+/// one call instead of requiring the caller to know every session id.
+pub async fn revoke_all(pool: &PgPool, user_id: Uuid) -> Result<u64, AppError> {
+    let result = sqlx::query(
+        "UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected())
+}
+
 /// Loads the user for a session in one round trip, and structurally ties
 /// the two together: `WHERE s.user_id = $2` fails closed if the session's
 /// owner ever diverges from the JWT's `sub` claim, instead of relying on
@@ -126,6 +141,52 @@ mod tests {
             .await
             .unwrap()
             .is_none());
+
+        test_support::delete_user(&pool, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn revoke_all_invalidates_every_session_for_the_user() {
+        let pool = test_support::pool().await;
+        let user_id = test_support::insert_user(&pool).await;
+
+        let (session_a, _) = create(&pool, user_id).await.unwrap();
+        let (session_b, _) = create(&pool, user_id).await.unwrap();
+
+        let revoked = revoke_all(&pool, user_id).await.unwrap();
+        assert_eq!(revoked, 2);
+
+        assert!(authenticate(&pool, session_a, user_id).await.unwrap().is_none());
+        assert!(authenticate(&pool, session_b, user_id).await.unwrap().is_none());
+
+        test_support::delete_user(&pool, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn revoke_all_does_not_touch_another_users_sessions() {
+        let pool = test_support::pool().await;
+        let target_id = test_support::insert_user(&pool).await;
+        let other_id = test_support::insert_user(&pool).await;
+
+        let (target_session, _) = create(&pool, target_id).await.unwrap();
+        let (other_session, _) = create(&pool, other_id).await.unwrap();
+
+        revoke_all(&pool, target_id).await.unwrap();
+
+        assert!(authenticate(&pool, target_session, target_id).await.unwrap().is_none());
+        assert!(authenticate(&pool, other_session, other_id).await.unwrap().is_some());
+
+        test_support::delete_user(&pool, target_id).await;
+        test_support::delete_user(&pool, other_id).await;
+    }
+
+    #[tokio::test]
+    async fn revoke_all_with_no_sessions_is_a_no_op() {
+        let pool = test_support::pool().await;
+        let user_id = test_support::insert_user(&pool).await;
+
+        let revoked = revoke_all(&pool, user_id).await.unwrap();
+        assert_eq!(revoked, 0);
 
         test_support::delete_user(&pool, user_id).await;
     }

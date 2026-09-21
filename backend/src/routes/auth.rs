@@ -1,5 +1,6 @@
 use axum::{
     extract::{Query, State},
+    http::StatusCode,
     response::{IntoResponse, Redirect, Response},
 };
 use axum_extra::extract::{
@@ -25,7 +26,7 @@ const QUERY_VALUE_SAFE: &AsciiSet = &NON_ALPHANUMERIC
 
 use crate::{
     audit,
-    auth::{extractor::SESSION_COOKIE, google, jwt, session},
+    auth::{extractor::SESSION_COOKIE, google, jwt, session, AuthUser},
     error::AppError,
     models::User,
     state::{PendingLogin, SharedState, LOGIN_ATTEMPT_TTL_MINUTES},
@@ -199,4 +200,38 @@ pub async fn logout(State(state): State<SharedState>, jar: CookieJar) -> impl In
         .build();
 
     (jar.add(expired), Redirect::to("/"))
+}
+
+/// POST /auth/sign-out-everywhere — revokes every session belonging to the
+/// caller, not just the one tied to their current cookie. For when a user
+/// suspects a session was stolen (malware, a device they forgot logged in
+/// somewhere) and wants to cut off access everywhere at once, rather than
+/// having to know which specific session to revoke.
+pub async fn sign_out_everywhere(
+    State(state): State<SharedState>,
+    AuthUser(user): AuthUser,
+) -> Result<impl IntoResponse, AppError> {
+    let revoked = session::revoke_all(&state.db, user.id).await?;
+
+    if let Err(err) = audit::log(
+        &state.db,
+        Some(user.id),
+        "sign_out_everywhere",
+        Some(json!({ "sessions_revoked": revoked })),
+    )
+    .await
+    {
+        tracing::error!(?err, "failed to write sign_out_everywhere audit log");
+    }
+
+    // The caller's own current session is included in "everywhere", so
+    // clear their cookie too — otherwise their browser keeps sending a
+    // token that's now revoked (correctly unauthorized, but a needless 401
+    // on their very next request instead of a clean logged-out state).
+    let expired = Cookie::build((SESSION_COOKIE, ""))
+        .path("/")
+        .max_age(time::Duration::seconds(0))
+        .build();
+
+    Ok((CookieJar::new().add(expired), StatusCode::NO_CONTENT))
 }

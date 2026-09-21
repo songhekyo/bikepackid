@@ -19,7 +19,6 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 ## Nice to have (tidak blocking launch awal)
 
 - [ ] Audit log viewer/admin UI buat baca tabel `audit_logs` (sekarang cuma bisa query manual).
-- [ ] "Sign out everywhere" (revoke semua session milik satu user sekaligus) — tabel `sessions` sudah mendukung ini, tinggal tambah endpoint.
 - [ ] Refresh token / access token jangka pendek + refresh jangka panjang, kalau nanti butuh model sesi yang lebih granular dari JWT 30 hari flat.
 - [ ] Load testing endpoint auth sebelum ekspektasi traffic tinggi.
 
@@ -49,3 +48,4 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 - [x] Masa berlaku cookie sesi diturunkan dari `expires_at` baris `sessions` (bukan konstanta terpisah yang bisa mencle dari nilai di database).
 - [x] CORS mengizinkan header `Content-Type` — sebelumnya preflight buat request JSON (POST) akan gagal.
 - [x] Rate limiting per-IP di `/auth/google/login` dan `/auth/google/callback` (`tower_governor`, burst 5 / replenish 1 tiap 2 detik, key dari `x-forwarded-for`/`x-real-ip`/`forwarded` dengan fallback ke peer IP). In-memory per-instance — lihat catatan multi-instance di atas.
+- [x] "Sign out everywhere" (`POST /auth/sign-out-everywhere`) — revoke semua sesi milik user yang sedang login sekaligus, bukan cuma sesi yang dipakai manggil endpoint-nya. Tercatat di `audit_logs`.
