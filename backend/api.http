@@ -1,0 +1,135 @@
+### bikepackid backend — manual API testing
+#
+# Dibaca kulala.nvim (atau REST Client di VS Code, format filenya sama).
+# `###` misahin tiap request jadi block independen — taro kursor di dalam
+# satu block terus jalanin (kulala.nvim: <leader>rr default, cek `:h kulala`
+# kalau beda di config kamu).
+#
+# @session harus diisi manual dulu abis login (lihat block paling atas) —
+# gak ada auto-extract cookie dari response di sini, tetep manual copy dari
+# DevTools browser (lihat alasannya: JWT cuma pernah dikirim sekali lewat
+# Set-Cookie, sengaja gak pernah balik lagi lewat response body/endpoint
+# manapun).
+
+@baseUrl = http://localhost:8080
+@session = ganti-dengan-value-cookie-dari-devtools
+
+### Health check (gak butuh auth)
+GET {{baseUrl}}/health
+
+### Versi commit yang lagi jalan (gak butuh auth)
+GET {{baseUrl}}/version
+
+### Login — buka ini di BROWSER (bukan lewat kulala), Google butuh redirect
+### interaktif. Abis sukses, ambil cookie `session` dari DevTools, paste ke
+### @session di atas.
+GET {{baseUrl}}/auth/google/login
+
+### Profil user yang lagi login
+GET {{baseUrl}}/me
+Cookie: session={{session}}
+
+### Contoh route khusus role creator+
+GET {{baseUrl}}/app/status
+Cookie: session={{session}}
+
+### Logout (revoke sesi ini doang)
+POST {{baseUrl}}/auth/logout
+Cookie: session={{session}}
+
+### Logout dari semua device (revoke semua sesi milik user ini)
+POST {{baseUrl}}/auth/sign-out-everywhere
+Cookie: session={{session}}
+
+### === Journey ===
+
+### List journey publik (gak wajib login, exclude draft)
+GET {{baseUrl}}/journeys?limit=20&offset=0
+
+### Bikin journey baru (role creator+, selalu mulai draft)
+POST {{baseUrl}}/journeys
+Cookie: session={{session}}
+Content-Type: application/json
+
+{
+  "title": "Bandung ke Yogyakarta",
+  "description": "Trip pertama"
+}
+
+### Detail satu journey (404 kalau draft & bukan owner/moderator)
+@journeyId = ganti-dengan-uuid-journey
+GET {{baseUrl}}/journeys/{{journeyId}}
+Cookie: session={{session}}
+
+### Update journey (owner atau moderator+) — publish butuh lat/lng lengkap
+PATCH {{baseUrl}}/journeys/{{journeyId}}
+Cookie: session={{session}}
+Content-Type: application/json
+
+{
+  "status": "published",
+  "start_lat": -6.9,
+  "start_lng": 107.6,
+  "end_lat": -7.8,
+  "end_lng": 110.4
+}
+
+### === Checkpoint ===
+
+### List checkpoint sebuah journey
+GET {{baseUrl}}/journeys/{{journeyId}}/checkpoints
+Cookie: session={{session}}
+
+### Tambah checkpoint
+POST {{baseUrl}}/journeys/{{journeyId}}/checkpoints
+Cookie: session={{session}}
+Content-Type: application/json
+
+{
+  "lat": -6.9,
+  "lng": 107.6,
+  "captured_at": "2026-09-22T10:00:00Z",
+  "title": "Start"
+}
+
+### === Post ===
+
+@checkpointId = ganti-dengan-uuid-checkpoint
+
+### List post sebuah checkpoint
+GET {{baseUrl}}/checkpoints/{{checkpointId}}/posts
+Cookie: session={{session}}
+
+### Posting teks
+POST {{baseUrl}}/checkpoints/{{checkpointId}}/posts
+Cookie: session={{session}}
+Content-Type: application/json
+
+{
+  "type": "text",
+  "body": "Berangkat!"
+}
+
+### === Upload foto ===
+
+### 1. Minta presigned URL — hasilnya {upload_url, public_url}
+POST {{baseUrl}}/uploads/presign-url
+Cookie: session={{session}}
+
+### 2. Upload file langsung ke R2 (ganti upload_url dari response di atas).
+### PUT body-nya file mentah — kulala.nvim: `< ./path/ke/foto.jpg` di baris
+### body buat baca dari file lokal.
+PUT ganti-dengan-upload_url-dari-response-sebelumnya
+Content-Type: image/jpeg
+
+< ./foto-test.jpg
+
+### 3. Posting foto, pakai public_url dari step 1 sebagai media_url
+POST {{baseUrl}}/checkpoints/{{checkpointId}}/posts
+Cookie: session={{session}}
+Content-Type: application/json
+
+{
+  "type": "photo",
+  "media_url": "ganti-dengan-public_url-dari-step-1"
+}
