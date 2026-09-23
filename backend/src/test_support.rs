@@ -119,5 +119,6 @@ pub async fn app_state() -> crate::state::SharedState {
         http_client: reqwest::Client::new(),
         pending_logins: Mutex::new(HashMap::new()),
         r2,
+        journeys_cache: crate::journey::new_journey_list_cache(),
     })
 }

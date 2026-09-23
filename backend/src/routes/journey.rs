@@ -36,14 +36,25 @@ impl ListJourneysQuery {
     }
 }
 
-/// GET /journeys — public feed, excludes draft.
+/// GET /journeys — public feed, excludes draft. Cached in-process for
+/// `JOURNEY_LIST_CACHE_TTL_SECONDS` (see `journey::new_journey_list_cache`)
+/// — a plain get-then-insert, not moka's `try_get_with`, so two requests
+/// racing on the same empty cache entry both hit the DB once each rather
+/// than one waiting on the other; fine at this traffic level, and simpler
+/// to read than threading a `sqlx::Error` back out of an `Arc` (what
+/// `try_get_with`'s dedup would require, since `AppError` isn't `Clone`).
 pub async fn list(
     State(state): State<SharedState>,
     Query(query): Query<ListJourneysQuery>,
 ) -> Result<Json<Vec<Journey>>, AppError> {
     let (limit, offset) = query.clamped();
 
+    if let Some(cached) = state.journeys_cache.get(&(limit, offset)).await {
+        return Ok(Json(cached));
+    }
+
     let journeys = journey::service::list_public_journeys(&state.db, limit, offset).await?;
+    state.journeys_cache.insert((limit, offset), journeys.clone()).await;
     Ok(Json(journeys))
 }
 
