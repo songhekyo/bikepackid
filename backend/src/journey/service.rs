@@ -15,6 +15,7 @@ fn user_can_edit_journey(journey: &Journey, user: &User) -> bool {
     journey.user_id == user.id || user.role.can_moderate()
 }
 
+#[tracing::instrument(skip(pool))]
 async fn fetch_journey(pool: &PgPool, journey_id: Uuid) -> Result<Option<Journey>, AppError> {
     let journey = sqlx::query_as::<_, Journey>("SELECT * FROM journeys WHERE id = $1")
         .bind(journey_id)
@@ -24,6 +25,7 @@ async fn fetch_journey(pool: &PgPool, journey_id: Uuid) -> Result<Option<Journey
     Ok(journey)
 }
 
+#[tracing::instrument(skip(pool))]
 async fn fetch_checkpoint(pool: &PgPool, checkpoint_id: Uuid) -> Result<Option<Checkpoint>, AppError> {
     let checkpoint = sqlx::query_as::<_, Checkpoint>("SELECT * FROM checkpoints WHERE id = $1")
         .bind(checkpoint_id)
@@ -33,6 +35,7 @@ async fn fetch_checkpoint(pool: &PgPool, checkpoint_id: Uuid) -> Result<Option<C
     Ok(checkpoint)
 }
 
+#[tracing::instrument(skip(pool))]
 async fn fetch_post(pool: &PgPool, post_id: Uuid) -> Result<Option<Post>, AppError> {
     let post = sqlx::query_as::<_, Post>("SELECT * FROM posts WHERE id = $1")
         .bind(post_id)
@@ -42,6 +45,7 @@ async fn fetch_post(pool: &PgPool, post_id: Uuid) -> Result<Option<Post>, AppErr
     Ok(post)
 }
 
+#[tracing::instrument(skip(pool, req))]
 pub async fn create_journey(
     pool: &PgPool,
     user_id: Uuid,
@@ -71,6 +75,7 @@ pub async fn create_journey(
 /// `draft` journey is only visible to its owner or a moderator+. Returns
 /// `NotFound` (not `Forbidden`) when invisible, so a draft's existence
 /// isn't leaked to anyone who isn't allowed to see it.
+#[tracing::instrument(skip(pool, viewer))]
 pub async fn get_journey(
     pool: &PgPool,
     journey_id: Uuid,
@@ -88,6 +93,7 @@ pub async fn get_journey(
     Ok(journey)
 }
 
+#[tracing::instrument(skip(pool))]
 pub async fn list_public_journeys(
     pool: &PgPool,
     limit: i64,
@@ -109,6 +115,7 @@ pub async fn list_public_journeys(
     Ok(journeys)
 }
 
+#[tracing::instrument(skip(pool, user, req), fields(user_id = %user.id))]
 pub async fn update_journey(
     pool: &PgPool,
     journey_id: Uuid,
@@ -160,6 +167,7 @@ pub async fn update_journey(
     Ok(updated)
 }
 
+#[tracing::instrument(skip(pool, user, req), fields(user_id = %user.id))]
 pub async fn create_checkpoint(
     pool: &PgPool,
     journey_id: Uuid,
@@ -200,6 +208,7 @@ pub async fn create_checkpoint(
     Ok(checkpoint)
 }
 
+#[tracing::instrument(skip(pool, viewer))]
 pub async fn list_checkpoints(
     pool: &PgPool,
     journey_id: Uuid,
@@ -226,6 +235,7 @@ pub async fn list_checkpoints(
     Ok(checkpoints)
 }
 
+#[tracing::instrument(skip(pool, user, req), fields(user_id = %user.id))]
 pub async fn create_post(
     pool: &PgPool,
     checkpoint_id: Uuid,
@@ -268,6 +278,7 @@ pub async fn create_post(
     Ok(post)
 }
 
+#[tracing::instrument(skip(pool, viewer))]
 pub async fn list_posts(
     pool: &PgPool,
     checkpoint_id: Uuid,

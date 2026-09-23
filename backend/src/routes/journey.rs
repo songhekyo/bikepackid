@@ -4,9 +4,11 @@ use axum::{
     Json,
 };
 use serde::Deserialize;
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::{
+    audit,
     auth::{AuthUser, OptionalAuthUser},
     error::AppError,
     journey::{
@@ -50,6 +52,18 @@ pub async fn create(
     }
 
     let journey = journey::service::create_journey(&state.db, user.id, req).await?;
+
+    if let Err(err) = audit::log(
+        &state.db,
+        Some(user.id),
+        "journey_created",
+        Some(json!({ "journey_id": journey.id })),
+    )
+    .await
+    {
+        tracing::error!(?err, "failed to write journey_created audit log");
+    }
+
     Ok((StatusCode::CREATED, Json(journey)))
 }
 
@@ -77,6 +91,18 @@ pub async fn update(
     }
 
     let journey = journey::service::update_journey(&state.db, journey_id, &user, req).await?;
+
+    if let Err(err) = audit::log(
+        &state.db,
+        Some(user.id),
+        "journey_updated",
+        Some(json!({ "journey_id": journey.id, "status": journey.status })),
+    )
+    .await
+    {
+        tracing::error!(?err, "failed to write journey_updated audit log");
+    }
+
     Ok(Json(journey))
 }
 
@@ -104,6 +130,18 @@ pub async fn create_checkpoint(
     }
 
     let checkpoint = journey::service::create_checkpoint(&state.db, journey_id, &user, req).await?;
+
+    if let Err(err) = audit::log(
+        &state.db,
+        Some(user.id),
+        "checkpoint_created",
+        Some(json!({ "checkpoint_id": checkpoint.id, "journey_id": journey_id })),
+    )
+    .await
+    {
+        tracing::error!(?err, "failed to write checkpoint_created audit log");
+    }
+
     Ok((StatusCode::CREATED, Json(checkpoint)))
 }
 
@@ -129,6 +167,18 @@ pub async fn create_post(
     }
 
     let post = journey::service::create_post(&state.db, checkpoint_id, &user, req).await?;
+
+    if let Err(err) = audit::log(
+        &state.db,
+        Some(user.id),
+        "post_created",
+        Some(json!({ "post_id": post.id, "checkpoint_id": checkpoint_id })),
+    )
+    .await
+    {
+        tracing::error!(?err, "failed to write post_created audit log");
+    }
+
     Ok((StatusCode::CREATED, Json(post)))
 }
 
