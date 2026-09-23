@@ -27,16 +27,37 @@ pub struct ListJourneysQuery {
     offset: Option<i64>,
 }
 
-/// GET /journeys — public feed, excludes draft. Clamped `limit`/`offset`
-/// instead of rejecting an out-of-range value outright.
+impl ListJourneysQuery {
+    /// Clamped instead of rejecting an out-of-range value outright.
+    fn clamped(&self) -> (i64, i64) {
+        let limit = self.limit.unwrap_or(DEFAULT_PAGE_SIZE).clamp(1, MAX_PAGE_SIZE);
+        let offset = self.offset.unwrap_or(0).max(0);
+        (limit, offset)
+    }
+}
+
+/// GET /journeys — public feed, excludes draft.
 pub async fn list(
     State(state): State<SharedState>,
     Query(query): Query<ListJourneysQuery>,
 ) -> Result<Json<Vec<Journey>>, AppError> {
-    let limit = query.limit.unwrap_or(DEFAULT_PAGE_SIZE).clamp(1, MAX_PAGE_SIZE);
-    let offset = query.offset.unwrap_or(0).max(0);
+    let (limit, offset) = query.clamped();
 
     let journeys = journey::service::list_public_journeys(&state.db, limit, offset).await?;
+    Ok(Json(journeys))
+}
+
+/// GET /me/journeys — every journey the caller owns, including `draft`
+/// (the one place drafts show up in a list rather than only being
+/// fetchable one at a time by id via `GET /journeys/:id`).
+pub async fn list_mine(
+    State(state): State<SharedState>,
+    AuthUser(user): AuthUser,
+    Query(query): Query<ListJourneysQuery>,
+) -> Result<Json<Vec<Journey>>, AppError> {
+    let (limit, offset) = query.clamped();
+
+    let journeys = journey::service::list_my_journeys(&state.db, user.id, limit, offset).await?;
     Ok(Json(journeys))
 }
 
