@@ -49,6 +49,7 @@ pub fn router() -> Router<SharedState> {
         .route("/auth/sign-out-everywhere", post(auth::sign_out_everywhere))
         .route("/me", get(me::me))
         .route("/app/status", get(me::app_status))
+        .route("/me/journeys", get(journey::list_mine))
         .route("/journeys", get(journey::list).post(journey::create))
         .route("/journeys/:id", get(journey::get).patch(journey::update))
         .route(
@@ -529,6 +530,52 @@ mod tests {
 
         test_support::delete_user(&state.db, owner_id).await;
         test_support::delete_user(&state.db, other_id).await;
+    }
+
+    #[tokio::test]
+    async fn list_mine_includes_the_callers_own_draft() {
+        let state = test_support::app_state().await;
+        let owner_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+        let owner_cookie = cookie_for(&state, owner_id, Role::Creator).await;
+
+        let draft_id = test_support::insert_journey(&state.db, owner_id, "draft").await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/me/journeys")
+                    .header("cookie", owner_cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let journeys: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+        assert!(journeys.iter().any(|j| j["id"] == draft_id.to_string()));
+
+        test_support::delete_user(&state.db, owner_id).await;
+    }
+
+    #[tokio::test]
+    async fn list_mine_without_a_cookie_is_unauthorized() {
+        let state = test_support::app_state().await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/me/journeys")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]

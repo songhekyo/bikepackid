@@ -115,6 +115,33 @@ pub async fn list_public_journeys(
     Ok(journeys)
 }
 
+/// All journeys owned by `user_id`, regardless of status — unlike
+/// `list_public_journeys`, this is the one place `draft` journeys show up
+/// in a list rather than only being fetchable one at a time by id.
+#[tracing::instrument(skip(pool))]
+pub async fn list_my_journeys(
+    pool: &PgPool,
+    user_id: Uuid,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<Journey>, AppError> {
+    let journeys = sqlx::query_as::<_, Journey>(
+        r#"
+        SELECT * FROM journeys
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+    )
+    .bind(user_id)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(journeys)
+}
+
 #[tracing::instrument(skip(pool, user, req), fields(user_id = %user.id))]
 pub async fn update_journey(
     pool: &PgPool,
@@ -319,6 +346,27 @@ mod tests {
             end_date: None,
             cover_image: None,
         }
+    }
+
+    #[tokio::test]
+    async fn list_my_journeys_includes_draft_and_excludes_other_users() {
+        let pool = test_support::pool().await;
+        let user_id = test_support::insert_user(&pool).await;
+        let other_id = test_support::insert_user(&pool).await;
+
+        let draft = create_journey(&pool, user_id, journey_request("Draft")).await.unwrap();
+        let published = test_support::insert_journey(&pool, user_id, "published").await;
+        let other_journey = test_support::insert_journey(&pool, other_id, "published").await;
+
+        let mine = list_my_journeys(&pool, user_id, 50, 0).await.unwrap();
+        let mine_ids: Vec<_> = mine.iter().map(|j| j.id).collect();
+
+        assert!(mine_ids.contains(&draft.id), "draft must show up in the owner's own list");
+        assert!(mine_ids.contains(&published));
+        assert!(!mine_ids.contains(&other_journey));
+
+        test_support::delete_user(&pool, user_id).await;
+        test_support::delete_user(&pool, other_id).await;
     }
 
     #[tokio::test]

@@ -33,6 +33,11 @@ Cookie: session={{session}}
 GET {{baseUrl}}/app/status
 Cookie: session={{session}}
 
+### Semua journey milik saya, termasuk draft (satu-satunya tempat draft
+### nongol di list, bukan cuma bisa diambil satu-satu lewat /journeys/:id)
+GET {{baseUrl}}/me/journeys
+Cookie: session={{session}}
+
 ### Logout (revoke sesi ini doang)
 POST {{baseUrl}}/auth/logout
 Cookie: session={{session}}

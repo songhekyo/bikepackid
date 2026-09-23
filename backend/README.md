@@ -80,6 +80,7 @@ Test tersebar di tiap modul (`#[cfg(test)] mod tests` di file yang sama, konvens
 | POST | `/auth/sign-out-everywhere` | wajib login | revoke semua sesi milik user, bukan cuma yang sedang dipakai |
 | GET | `/me` | wajib login | profil user yang sedang login |
 | GET | `/app/status` | wajib login + role `creator`+ | contoh gate khusus app |
+| GET | `/me/journeys` | wajib login | semua journey milik pemanggil, termasuk `draft` — satu-satunya tempat draft nongol di list, bukan cuma bisa diambil satu-satu lewat `/journeys/:id` |
 | GET | `/journeys` | - (opsional) | list journey publik (bukan `draft`), paginated `?limit=&offset=` |
 | POST | `/journeys` | wajib login + role `creator`+ | bikin journey baru, selalu mulai sebagai `draft` |
 | GET | `/journeys/:id` | - (opsional) | 404 kalau `draft` dan bukan owner/moderator |
