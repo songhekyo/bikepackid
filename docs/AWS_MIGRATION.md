@@ -32,7 +32,7 @@ Tujuan fase ini: ngerti primitif dasar (IAM, VPC, Security Group, EC2) tanpa nye
 ## Fase 2 — Deploy ulang arsitektur (BFF, gateway, microservice) — di sinilah belajar yang kamu incar
 
 - [ ] **BFF** — Rust/Go/Node (pilih salah satu, gak usah semua) jalan sebagai EC2 instance/container terpisah dari backend utama. Ini juga jadi tempat natural buat nambahin dukungan **Bearer token** (App mobile gak bisa pakai cookie httpOnly kayak browser) sebagai jembatan ke backend Rust yang cookie-based.
-- [ ] **AWS API Gateway** (produk asli, bukan self-hosted Kong/Traefik — karena tujuannya belajar nama produk ini spesifik) — taro di depan BFF/backend, coba fitur dasarnya: routing, rate limiting, request/response transformation. Free tier: 1 juta request/bulan gratis 12 bulan pertama — buat pilot user dikit ini praktis gratis terus.
+- [ ] **AWS API Gateway** (produk asli, bukan self-hosted Kong/Traefik — karena tujuannya belajar nama produk ini spesifik) — taro di depan BFF/backend, coba fitur dasarnya: routing, rate limiting, request/response transformation. **Koreksi**: free tier "1 juta request/bulan gratis 12 bulan" cuma berlaku buat akun yang dibuat **sebelum Juli 2025** — akun baru (sesuai rencana Fase 0) dapetnya **kredit $200 sekali doang**, bukan free tier bulanan. Gak masalah di traffic pilot kita (lihat breakdown biaya di bawah) — HTTP API $1.00/juta request, buat ~10rb request/bulan itu ~$0.01/bulan.
 - [ ] **ECS + Fargate** (container orchestration, versi "beneran" dari `docker compose` yang udah biasa dipakai) — **jangan mulai dari sini**, baru masuk setelah EC2+Docker Compose manual berasa udah nyaman. Fargate itu pay-per-resource (vCPU+RAM per detik container jalan) — predictable selama container-nya kecil & gak nyala 24/7 pas cuma eksperimen.
 
 Urutan sengaja EC2-dulu-baru-ECS: biar kerasa bedanya "container biasa" vs "container yang di-orchestrate", bukan langsung lompat ke abstraksi tinggi tanpa ngerti yang di-abstraksi-in apa.
@@ -41,6 +41,36 @@ Urutan sengaja EC2-dulu-baru-ECS: biar kerasa bedanya "container biasa" vs "cont
 
 - [ ] Pipeline GHCR+Watchtower yang udah ada **tetep bisa jalan apa adanya** di EC2 (Watchtower gak peduli VM-nya di mana) — gak wajib buru-buru ganti ke CodePipeline/CodeBuild. Migrasi ke situ jadi latihan terpisah kapan-kapan, bukan blocker migrasi awal.
 - [ ] Grafana Cloud + Alloy juga jalan sama persis di EC2 kayak di VPS lama — gak ada yang perlu diubah di sisi ini.
+
+## Estimasi biaya (region `ap-southeast-1` Singapore)
+
+Dipisah antara yang **harus nyala 24/7** (backend buat pilot user) dan yang **cuma nyala pas lagi latihan** (BFF/gateway/Fargate) — nunjukin langsung dampak dari prinsip pemisahan production vs eksperimen di bawah.
+
+**Selalu nyala:**
+
+| Resource | Spek | Estimasi/bulan |
+|---|---|---|
+| EC2 `t4g.micro` (backend Rust) | 2 vCPU/1GB, ARM | ~$7.5-8 |
+| EBS gp3 (root volume) | 20GB | ~$2 |
+| Elastic IP | attached ke instance yang running | $0 |
+| Data transfer out | JSON kecil, foto tetap lewat R2 bukan AWS | nyaris $0 |
+| **Subtotal** | | **~$9.5-10/bulan (~Rp150.000-160.000)** |
+
+**Cuma nyala pas latihan (BFF, API Gateway, Fargate):**
+
+| Resource | Spek | Estimasi |
+|---|---|---|
+| EC2 `t4g.micro` (BFF) | sama kayak di atas, tapi nyala ~20 jam/bulan doang | ~$0.20/bulan (vs ~$7.5-8 kalau ikut 24/7) |
+| AWS API Gateway (HTTP API) | $1.00/juta request | ~$0.01/bulan buat ~10rb request pilot |
+| ECS Fargate (container eksperimen) | $0.04048/vCPU-jam + $0.004445/GB-jam (us-east-1, Singapore ~10-30% lebih) | ~$0.015/jam container nyala — sesi 5 jam ≈ $0.08 |
+
+**Total realistis**: kalau BFF ikut nyala 24/7 bareng backend → **~$17-18/bulan (~Rp270.000-285.000)**. Kalau BFF cuma nyala pas latihan (sesuai prinsip di bawah) → **~$10-11/bulan (~Rp160.000-175.000)** — malah lebih murah dari VPS Nusa sekarang (~Rp100rb doang lebih murah dikit, tapi dapet exposure AWS yang jadi tujuan awal migrasi ini).
+
+**Yang sengaja dihindarin** (kalau kepasang gak sengaja, bisa 3-4x lipatin tagihan):
+- **NAT Gateway** — ~$32+/bulan cuma buat nyala, di luar biaya data.
+- **Route 53** — gak perlu, DNS tetap di provider yang sekarang, tinggal ganti A record nunjuk ke IP EC2.
+
+**Buffer**: kredit $200 sekali dari akun baru (lihat catatan di Fase 2) nutup eksperimen berbulan-bulan sebelum biaya asli mulai kepakai.
 
 ## Prinsip hemat biaya (pegang terus sepanjang eksperimen)
 
