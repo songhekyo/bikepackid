@@ -533,6 +533,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_journeys_is_cached_and_misses_a_journey_inserted_after_the_first_call() {
+        let state = test_support::app_state().await;
+        let owner_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+
+        let first_journey = test_support::insert_journey(&state.db, owner_id, "published").await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .clone()
+            .oneshot(Request::builder().uri("/journeys").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let journeys: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+        assert!(journeys.iter().any(|j| j["id"] == first_journey.to_string()));
+
+        // Inserted directly, bypassing the route that would populate the
+        // cache — a real second write via PATCH/POST wouldn't invalidate
+        // the cache either (TTL-only by design), but this skips needing a
+        // second full create+publish round trip just to prove the point.
+        let second_journey = test_support::insert_journey(&state.db, owner_id, "published").await;
+
+        let response = app
+            .oneshot(Request::builder().uri("/journeys").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let journeys: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+        assert!(
+            !journeys.iter().any(|j| j["id"] == second_journey.to_string()),
+            "expected the cached response to still miss a journey inserted after the first call"
+        );
+
+        test_support::delete_user(&state.db, owner_id).await;
+    }
+
+    #[tokio::test]
     async fn list_mine_includes_the_callers_own_draft() {
         let state = test_support::app_state().await;
         let owner_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;

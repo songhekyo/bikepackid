@@ -13,6 +13,12 @@
 
 @baseUrl = http://localhost:8080
 @session = ganti-dengan-value-cookie-dari-devtools
+# Diisi manual dari response setelah bikin journey/checkpoint (lihat block
+# "Bikin journey baru"/"Tambah checkpoint" di bawah) — sama kayak @session,
+# harus di sini (sebelum ### manapun) biar ke-pakai di semua block, bukan
+# cuma block tempat dia didefinisikan.
+@journeyId = ganti-dengan-uuid-journey
+@checkpointId = ganti-dengan-uuid-checkpoint
 
 ### Health check (gak butuh auth)
 GET {{baseUrl}}/health
@@ -62,7 +68,6 @@ Content-Type: application/json
 }
 
 ### Detail satu journey (404 kalau draft & bukan owner/moderator)
-@journeyId = ganti-dengan-uuid-journey
 GET {{baseUrl}}/journeys/{{journeyId}}
 Cookie: session={{session}}
 
@@ -98,8 +103,6 @@ Content-Type: application/json
 }
 
 ### === Post ===
-
-@checkpointId = ganti-dengan-uuid-checkpoint
 
 ### List post sebuah checkpoint
 GET {{baseUrl}}/checkpoints/{{checkpointId}}/posts

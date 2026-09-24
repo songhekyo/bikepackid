@@ -14,6 +14,7 @@ Yang udah dibangun & production: sistem User (login Google OAuth, role-based acc
 - [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md) — desain sistem: model data, roadmap fase (konten → komunitas → marketplace), strategi biaya/infra.
 - [`docs/INFRA_HISTORY.md`](docs/INFRA_HISTORY.md) — riwayat keputusan infra dari nol (kenapa Nusa VPS, kenapa pindah ke Supabase, kenapa CI/CD-nya begini) — berguna kalau ada keputusan yang keliatan aneh tanpa konteks.
 - [`docs/JOURNEY_TODO.md`](docs/JOURNEY_TODO.md) — breakdown implementasi Journey/Checkpoint/Post/Equipment/Sponsors, urut sesuai dependency.
+- [`docs/AWS_MIGRATION.md`](docs/AWS_MIGRATION.md) — ancang-ancang pindah dari VPS ke AWS: alasan, urutan fase, dan cara nahan biaya tetap murah.
 
 ## Deploy & Infra
 

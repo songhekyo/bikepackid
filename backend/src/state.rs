@@ -8,6 +8,7 @@ use sqlx::PgPool;
 use crate::auth::google::OauthClient;
 use crate::config::Config;
 use crate::journey::storage::R2;
+use crate::journey::JourneyListCache;
 
 pub struct PendingLogin {
     pub verifier: PkceCodeVerifier,
@@ -30,6 +31,7 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub pending_logins: PendingLogins,
     pub r2: R2,
+    pub journeys_cache: JourneyListCache,
 }
 
 pub type SharedState = Arc<AppState>;

@@ -91,6 +91,15 @@ Daftar sponsor yang udah deal (di luar platform), ditampilin di halaman journey.
 - [ ] `backend/README.md` update
 - [ ] Commit, push, PR
 
+## Task 4 — Fitur konektivitas ala-telco (nunggu App mobile ada, belum di-desain detail)
+
+Empat fitur ini dipilih spesifik karena nyambung ke masalah nyata bikepacker (sering kehilangan sinyal data di rute terpencil) **dan** sekalian jadi vehicle belajar skill yang mirip domain telco (SMS gateway, sync atas koneksi gak stabil, push delivery, geospasial). Belum ada desain schema/API detail — ini baru daftar scope, bukan checklist implementasi kayak Task 1-3.
+
+- [ ] **SMS fallback / emergency check-in** — checkpoint via SMS pas gak ada sinyal data (cuma sinyal 2G/suara). Butuh integrasi SMS gateway (Twilio atau lokal — cek provider Indonesia kalau mau lebih murah/relevan), endpoint yang verifikasi nomor terdaftar ke user mana, dan format pesan yang bisa di-parse jadi lat/lng (atau minimal "saya aman, posisi kira-kira di X").
+- [ ] **Offline-first sync** — `checkpoint.id` client-suppliable udah disiapin dari Task 1 buat ini. Yang belum: desain queue di App (antrian checkpoint/post yang dibuat offline), strategi retry, dan resolusi konflik kalau dua device sync checkpoint yang tumpang tindih.
+- [ ] **Push notification** — notify follower pas ada checkpoint/post baru dipublish. Butuh FCM (Android)/APNs (iOS), tabel buat nyimpen device token per user, dan trigger di `create_checkpoint`/`create_post` (mirip pola `audit::log` yang udah ada — best-effort, gak boleh gagalin request utama).
+- [ ] **Geofencing/proximity** — alert kalau ada bikepacker lain di radius tertentu, atau validasi jarak wajar antar checkpoint berurutan (deteksi anomali GPS). Kemungkinan butuh extension PostGIS di Postgres kalau perhitungan geospasialnya makin kompleks dari sekadar Haversine manual.
+
 ## Di luar 3 task ini (dicatat, belum di-task-in)
 
 - **Report/Moderasi** — belum diimplementasikan sama sekali (juga belum ada buat User). `journey_equipment`/`journey_sponsors` di atas udah nyiapin kolom `status` + rencana `reports.target_type`, tapi sistem report-nya sendiri nunggu dibangun terpisah.

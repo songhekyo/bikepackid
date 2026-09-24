@@ -82,6 +82,7 @@ async fn main() {
         http_client,
         pending_logins: Mutex::new(std::collections::HashMap::new()),
         r2,
+        journeys_cache: journey::new_journey_list_cache(),
     });
 
     spawn_session_purge_task(db);

@@ -1,9 +1,27 @@
 pub mod service;
 pub mod storage;
 
+use std::time::Duration;
+
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+/// TTL-only cache for `GET /journeys` (the public feed) — see the comment
+/// on the `moka` dependency in Cargo.toml for why in-process + TTL-only,
+/// not Redis or invalidate-on-write. Keyed by `(limit, offset)`, the full
+/// set of inputs that determines the result of `list_public_journeys`.
+pub type JourneyListCache = moka::future::Cache<(i64, i64), Vec<Journey>>;
+
+const JOURNEY_LIST_CACHE_TTL_SECONDS: u64 = 30;
+const JOURNEY_LIST_CACHE_MAX_CAPACITY: u64 = 100;
+
+pub fn new_journey_list_cache() -> JourneyListCache {
+    moka::future::Cache::builder()
+        .max_capacity(JOURNEY_LIST_CACHE_MAX_CAPACITY)
+        .time_to_live(Duration::from_secs(JOURNEY_LIST_CACHE_TTL_SECONDS))
+        .build()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "journey_status", rename_all = "lowercase")]
