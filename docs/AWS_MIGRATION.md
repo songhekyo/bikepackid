@@ -42,7 +42,9 @@ Urutan sengaja EC2-dulu-baru-ECS: biar kerasa bedanya "container biasa" vs "cont
 - [ ] Pipeline GHCR+Watchtower yang udah ada **tetep bisa jalan apa adanya** di EC2 (Watchtower gak peduli VM-nya di mana) — gak wajib buru-buru ganti ke CodePipeline/CodeBuild. Migrasi ke situ jadi latihan terpisah kapan-kapan, bukan blocker migrasi awal.
 - [ ] Grafana Cloud + Alloy juga jalan sama persis di EC2 kayak di VPS lama — gak ada yang perlu diubah di sisi ini.
 
-## Estimasi biaya (region `ap-southeast-1` Singapore)
+## Estimasi biaya (region `ap-southeast-2` Sydney)
+
+**Catatan**: AWS versi "new experience" (Builder ID + Projects) nge-lock region ke `ap-southeast-2` Sydney secara otomatis, gak bisa dipilih manual — jadi bukan `ap-southeast-1` Singapore kayak asumsi awal. Angka di bawah tetap dipakai sebagai estimasi (harga Sydney vs Singapore beda tipis, gak signifikan buat skala pilot ini), tinggal disesuaikan kalau nanti ada perbedaan harga nyata yang keliatan pas resource beneran jalan.
 
 Dipisah antara yang **harus nyala 24/7** (backend buat pilot user) dan yang **cuma nyala pas lagi latihan** (BFF/gateway/Fargate) — nunjukin langsung dampak dari prinsip pemisahan production vs eksperimen di bawah.
 
@@ -83,6 +85,6 @@ Dipisah antara yang **harus nyala 24/7** (backend buat pilot user) dan yang **cu
 
 ## Belum diputuskan / didiskusikan lebih lanjut
 
-- Region AWS mana (latency ke Indonesia — kemungkinan `ap-southeast-1` Singapore, sama kayak pertimbangan provider lain).
+- ~~Region AWS mana~~ — **udah diputuskan (dipaksa AWS)**: `ap-southeast-2` Sydney, gak bisa dipilih manual di AWS "new experience" (Builder ID + Projects).
 - Apa `bikepacking.cyou` (domain yang udah jalan) langsung dipindah pas migrasi, atau ada periode paralel VPS lama + AWS baru buat mastiin stabil dulu sebelum cutover.
 - Kapan/apa Postgres (Supabase) tetap dipertahankan sebagai managed service eksternal, atau di titik tertentu juga dipindah ke RDS (buat belajar RDS) — belum ada keputusan.
