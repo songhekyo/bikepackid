@@ -66,10 +66,23 @@ jobs:
       - name: cargo audit
         run: cargo audit
 
-  build-and-push:
+  # Built per-arch on a native runner each (not one job cross-building both
+  # via QEMU) — emulated Rust compilation is dramatically slower than native
+  # since compilers are syscall/thread-heavy, the worst case for emulation
+  # overhead. `ubuntu-24.04-arm` is a real ARM64 GitHub-hosted runner.
+  build:
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+    runs-on: ${{ matrix.runner }}
     permissions:
       packages: write
       contents: read
@@ -82,24 +95,39 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # arm64 needed alongside amd64 since the AWS EC2 learning instance runs
-      # on Graviton (t4g.small, arm64) — without this, pulling the image
-      # there works but runs the amd64 build under QEMU emulation, which
-      # `docker compose up` warns about and is slower than a native arm64
-      # image. QEMU here (buildtime, cross-compiling in the runner) emulates
-      # to *build* the arm64 image; the deployed container itself then runs
-      # natively on Graviton.
-      - uses: docker/setup-qemu-action@v3
-
       - uses: docker/setup-buildx-action@v3
 
       - uses: docker/build-push-action@v6
         with:
           context: backend
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           build-args: |
             GIT_SHA=${{ github.sha }}
           tags: |
-            ghcr.io/songhekyo/bikepackid-backend:latest
-            ghcr.io/songhekyo/bikepackid-backend:sha-${{ github.sha }}
+            ghcr.io/songhekyo/bikepackid-backend:sha-${{ github.sha }}-${{ matrix.suffix }}
+
+  # Combines the two single-arch images built above into one multi-arch
+  # manifest — this is metadata-only (no rebuild), so it's fast regardless
+  # of how long the arch-specific builds above took.
+  merge-manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Create and push multi-arch manifest
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/songhekyo/bikepackid-backend:latest \
+            -t ghcr.io/songhekyo/bikepackid-backend:sha-${{ github.sha }} \
+            ghcr.io/songhekyo/bikepackid-backend:sha-${{ github.sha }}-amd64 \
+            ghcr.io/songhekyo/bikepackid-backend:sha-${{ github.sha }}-arm64
