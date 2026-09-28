@@ -5,7 +5,7 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 ## Wajib sebelum live ke user beneran
 
 - [ ] **Google OAuth consent screen** — masih mode "Testing" (dibatasi ~100 user, didaftarin manual). Redirect URI production sudah benar terdaftar (`https://bikepacking.cyou/auth/google/callback`); yang belum: submit consent screen ke Google buat verifikasi kalau mau user di luar daftar testing bisa login.
-- [ ] **Backup database** — belum ada strategi. Minimal: automated daily backup dari provider Postgres yang dipakai (Supabase/Neon/RDS biasanya punya built-in).
+- [ ] **Backup database** — belum ada strategi, dan sekarang **lebih mendesak** dari sebelumnya: sejak cutover ke AWS (`docs/INFRA_HISTORY.md` bagian 12), Postgres jalan **self-hosted** di container EC2, bukan Supabase lagi — gak ada lagi automated backup bawaan provider. Minimal: cron job `pg_dump` terjadwal ke luar instance (misal ke Cloudflare R2 yang udah dipakai buat media), bukan cuma andelin EBS snapshot manual.
 - [ ] **Alerting berbasis metric/trace** — uptime check sudah ada (lihat "Sudah beres"), tapi belum ada alert buat error rate naik atau latency p99 endpoint auth melonjak. Datanya sudah masuk Grafana Cloud (trace), tinggal bikin alert rule di Grafana buat kondisi-kondisi itu.
 
 ## Penting, tapi bisa menyusul cepat setelah live
@@ -23,7 +23,7 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 
 ## Sudah beres
 
-- [x] **CI** — `.github/workflows/ci.yml` jalanin `cargo test`, `cargo clippy`, `cargo audit` tiap push/PR, plus build & push image Docker ke GHCR tiap push ke `main` — VPS tinggal `docker compose pull`, gak pernah compile Rust sendiri lagi (lihat `DEPLOY.md`).
+- [x] **CI** — `.github/workflows/ci.yml` jalanin `cargo test`, `cargo clippy`, `cargo audit` tiap push/PR, plus build (native `arm64`) & push image Docker ke GHCR tiap push ke `main` — server tinggal `docker compose pull`, gak pernah compile Rust sendiri lagi (lihat `DEPLOY_AWS.md`).
 - [x] Login tanpa password (Google OAuth only, PKCE + CSRF state).
 - [x] Session bisa di-revoke (tabel `sessions`, dicek tiap request).
 - [x] Cookie session `httpOnly` + `Secure` (default) + `SameSite=Lax`.

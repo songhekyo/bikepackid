@@ -1,15 +1,16 @@
 services:
   backend:
     # Built by .github/workflows/ci.yml on every push to main and pushed to
-    # GHCR — the VPS only ever pulls a prebuilt image, it never compiles
-    # Rust itself (see DEPLOY.md for why: 1 vCPU/1GB was never a reasonable
-    # place to run a Rust compile repeatedly).
+    # GHCR — the server only ever pulls a prebuilt image, it never compiles
+    # Rust itself (see DEPLOY.md/DEPLOY_AWS.md for why: neither the old
+    # 1 vCPU/1GB VPS nor cheap EC2 instance types are a reasonable place to
+    # run a Rust compile repeatedly).
     image: ghcr.io/songhekyo/bikepackid-backend:latest
     restart: unless-stopped
     env_file:
       - .env
     # Published directly to the host so nginx (running on the host, see
-    # DEPLOY.md) can reverse-proxy to 127.0.0.1:8080. Keep this closed off
+    # DEPLOY_AWS.md) can reverse-proxy to 127.0.0.1:8080. Keep this closed off
     # from the outside in the firewall once nginx is the only public entry
     # point — the backend should be reached through the reverse proxy, not
     # directly from the internet.
@@ -39,8 +40,9 @@ services:
 
   # Polls GHCR every 5 minutes for a new `backend` image digest and, when it
   # finds one, pulls it and recreates the container automatically — this is
-  # what makes "merge to main" actually mean "live" without SSHing in for a
-  # manual `docker compose pull && up -d` every time (see DEPLOY.md).
+  # what makes "merge to main" actually mean "live" without connecting in
+  # for a manual `docker compose pull && up -d` every time (see
+  # DEPLOY_AWS.md).
   # Scoped to WATCHTOWER_LABEL_ENABLE + the label on `backend` above on
   # purpose: `alloy` tracks `grafana/alloy:latest` too, but we don't want it
   # silently auto-upgrading — Alloy's config syntax has already broken once
