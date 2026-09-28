@@ -125,6 +125,10 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Create and push multi-arch manifest
+        # Overrides the workflow-level `defaults.run.working-directory:
+        # backend` — this job never checks out the repo (it only combines
+        # already-pushed image digests), so `backend` doesn't exist here.
+        working-directory: .
         run: |
           docker buildx imagetools create \
             -t ghcr.io/songhekyo/bikepackid-backend:latest \
