@@ -2,7 +2,7 @@
 
 Sistem User: login via Google OAuth, role-based access (web vs app).
 
-Konteks desain sistem secara keseluruhan (roadmap, entity yang belum diimplementasikan seperti Journey/Checkpoint/marketplace) ada di [`docs/SYSTEM_DESIGN.md`](../docs/SYSTEM_DESIGN.md). Checklist sebelum production ada di [`TODO_PRODUCTION.md`](./TODO_PRODUCTION.md). Panduan deploy ke VPS ada di [`DEPLOY.md`](./DEPLOY.md) — dokumentasi lengkap termasuk riwayat keputusan infra (provider, database, reverse proxy) di [`docs/INFRA_HISTORY.md`](../docs/INFRA_HISTORY.md).
+Konteks desain sistem secara keseluruhan (roadmap, entity yang belum diimplementasikan seperti Journey/Checkpoint/marketplace) ada di [`docs/SYSTEM_DESIGN.md`](../docs/SYSTEM_DESIGN.md). Checklist sebelum production ada di [`TODO_PRODUCTION.md`](./TODO_PRODUCTION.md). Panduan deploy aktif (AWS EC2) ada di [`DEPLOY_AWS.md`](./DEPLOY_AWS.md) — [`DEPLOY.md`](./DEPLOY.md) (VPS Nusa) sudah superseded, dibiarin sebagai referensi historis. Riwayat keputusan infra lengkap (provider, database, reverse proxy) di [`docs/INFRA_HISTORY.md`](../docs/INFRA_HISTORY.md).
 
 ## Jalankan lokal
 

@@ -1,8 +1,10 @@
-# Deploy ke VPS — panduan yang udah teruji jalan di production
+# Deploy ke VPS Nusa — historis, superseded
+
+**Sudah tidak dipakai** sejak cutover ke AWS EC2, 28 September 2026 — panduan operasional aktif sekarang ada di [`DEPLOY_AWS.md`](./DEPLOY_AWS.md). File ini dibiarin ada sebagai referensi (banyak prinsipnya, kayak Watchtower/Grafana Alloy/nginx reverse-proxy, tetep sama persis di setup baru) dan buat jejak keputusan — lihat `docs/INFRA_HISTORY.md` kenapa pindah.
 
 Panduan ini sengaja manual — tujuannya bukan cuma "biar jalan", tapi biar kamu pegang langsung tiap lapisan: server Linux, firewall, Docker, reverse proxy, TLS, database managed. Jalankan tiap perintah di bawah satu-satu, jangan asal copy-paste semuanya sekaligus.
 
-Live di `https://bikepacking.cyou`, di-deploy ke VPS Nusa (1 vCPU / 1GB RAM / 25GB disk, Fedora 42, Jakarta). Panduan ini udah direvisi total berdasarkan apa yang **beneran kejadian & kepake** waktu deploy pertama kali, bukan rencana awal di atas kertas. Bedanya:
+Dulu live di `https://bikepacking.cyou`, di-deploy ke VPS Nusa (1 vCPU / 1GB RAM / 25GB disk, Fedora 42, Jakarta). Panduan ini udah direvisi total berdasarkan apa yang **beneran kejadian & kepake** waktu deploy pertama kali, bukan rencana awal di atas kertas. Bedanya:
 
 - **Provider & spek**: awalnya rencana Hetzner CX22 (2 vCPU/4GB RAM), yang kepake justru VPS 1GB RAM — jauh lebih ketat, makanya ada langkah **swap** yang gak ada di draft awal (tanpa itu, `docker build` bisa OOM-killed).
 - **Reverse proxy**: awalnya rencana Caddy (auto-HTTPS), yang kepake **nginx** + `certbot` manual.
