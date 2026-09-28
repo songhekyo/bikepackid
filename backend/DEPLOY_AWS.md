@@ -113,6 +113,40 @@ docker compose -f docker-compose.yml -f docker-compose.postgres.yml exec -T post
 ```
 **Restore harus ke database yang bener-bener kosong** (belum pernah di-migrate `sqlx` sendiri) — kalau backend udah sempat jalan duluan (auto-migrate bikin schema+constraint), `pg_restore` gagal karena urutan `COPY` data ketubruk foreign key yang udah aktif. Kalau kejadian: `DROP DATABASE bikepackid; CREATE DATABASE bikepackid OWNER bikepackid;` dulu, baru restore ulang. Error soal `supabase_vault` pas restore **aman diabaikan** (extension internal Supabase, gak dipakai aplikasi).
 
+## Backup database
+
+Postgres self-hosted gak punya managed backup bawaan (beda dari Supabase dulu) — ini tanggung jawab sendiri. `backend/scripts/backup-db.sh` + `restore-db.sh` udah disiapin, tinggal setup:
+
+**1. Bucket R2 baru khusus backup** (Cloudflare dashboard) — **private**, beda dari `bikepackid-media` yang public-read buat foto. Generate scoped API token buat bucket ini doang (read+write).
+
+**2. Install AWS CLI** (dipakai buat komunikasi ke R2, S3-compatible):
+```bash
+sudo apt install -y awscli
+```
+
+**3. Isi env var yang dibutuhin script** — taro di `~/.bashrc` atau file terpisah yang di-`source`, **bukan** di `.env` aplikasi (ini kredensial infra, beda dari kredensial aplikasi):
+```bash
+export R2_BACKUP_BUCKET=bikepackid-backups
+export R2_BACKUP_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
+export AWS_ACCESS_KEY_ID=<R2 token access key>
+export AWS_SECRET_ACCESS_KEY=<R2 token secret key>
+# Opsional — alert kalau backup gagal/gak jalan, daftar gratis di healthchecks.io
+export HEALTHCHECK_PING_URL=https://hc-ping.com/<uuid-check-kamu>
+```
+
+**4. Jadwalin cron harian**:
+```bash
+crontab -e
+# tambahin baris ini:
+0 3 * * * . ~/.bashrc && /home/ubuntu/bikepackid/backend/scripts/backup-db.sh >> /var/log/bikepackid-backup.log 2>&1
+```
+
+**5. Test restore berkala** (bulanan, bukan cuma sekali pas setup) — backup yang gak pernah dites itu asumsi, bukan jaminan:
+```bash
+./scripts/restore-db.sh <nama-file-backup>.sql.gz
+```
+Restore ke database **terpisah** (`bikepackid_restore_test`, bukan `bikepackid` yang live), bandingin row count-nya sama database production, drop database test-nya setelah selesai cek.
+
 ## Perintah yang sering kepake
 
 | Perintah | Fungsi |
