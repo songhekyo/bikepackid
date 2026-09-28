@@ -83,14 +83,31 @@ Dikonfirmasi lewat `docker compose logs -f backend` (structured JSON log, `reque
 
 **UptimeRobot** ping `https://bikepacking.cyou/health` tiap 5 menit dari luar (bukan dari VPS sendiri), kirim alert email kalau gagal. Dipilih `/health` (bukan `/`) karena endpoint itu beneran nge-ping database, bukan 200 statis — jadi kedeteksi juga kalau Supabase yang bermasalah, bukan cuma proses backend crash. Setup-nya di luar codebase (dashboard UptimeRobot), dicatat di sini biar ke-track sebagai bagian dari infra.
 
+## 12. Migrasi VPS Nusa → AWS EC2 (Graviton)
+
+Periode: 24–28 September 2026. Detail rencana & alasan lengkap ada di [`docs/AWS_MIGRATION.md`](./AWS_MIGRATION.md) — bagian ini fokus ke bug/keputusan yang ketemu pas eksekusi, pola yang sama kayak section-section sebelumnya.
+
+**Arsitektur CPU jadi masalah nyata, bukan cuma teori.** EC2 dipilih ARM (`t4g`, Graviton — lebih murah dari x86 `t3`), tapi CI (`ci.yml`) dari awal cuma pernah build image `amd64` (default runner GitHub Actions). Pull ke instance ARM gagal total dengan `exec format error` — beda instruction set, bukan sekadar kompatibilitas versi. Fix pertama (`docker/setup-qemu-action`, cross-build `arm64` di runner `amd64`) kelewat lambat buat Rust — compiler itu beban kerja paling parah kena penalty emulasi (18+ menit satu run, gak kelar-kelar). Fix final: **native runner per arsitektur** (`ubuntu-24.04-arm` buat `arm64`, bukan emulasi) via matrix build + `docker buildx imagetools create` buat gabung manifest — begitu Nusa (satu-satunya konsumen `amd64`) di-decommission, disederhanain lagi balik ke satu job `arm64`-only.
+
+**Database: sejarah berulang, RAM lagi.** Alasan awal pindah dari Postgres lokal ke Supabase (section 5) itu RAM VPS 1GB. Keputusan Fase 2 migrasi AWS ini justru **balik lagi ke Postgres self-hosted** (container terpisah di EC2, `docker-compose.postgres.yml`) — sengaja, buat belajar jalanin Postgres sendiri, bukan lupa pelajaran lama. Konsekuensinya sama persis kayak dulu: `t4g.micro` (1GB) gak cukup nampung backend+Postgres bareng, upgrade ke `t4g.small` (2GB).
+
+**Migrasi data Supabase → Postgres self-hosted, gagal-lalu-berhasil.** `pg_dump -Fc` dari Supabase, `pg_restore --no-owner --no-privileges` ke Postgres EC2. Percobaan pertama gagal 43 error — root cause: backend sempat jalan duluan (auto-run migrasi `sqlx`-nya sendiri) sebelum restore, jadi target database udah punya schema **dengan foreign key constraint aktif** pas `pg_restore` nyoba `COPY` data — beda dari restore ke database kosong biasa (constraint baru dipasang belakangan di post-data section, jadi urutan insert data gak masalah). Fix: `DROP DATABASE` + `CREATE DATABASE` (beneran kosong, gak ada schema sama sekali) sebelum restore ulang, biar `pg_restore` yang atur urutan create-schema → load-data → pasang-constraint sendiri.
+
+**GHCR image balik private berulang kali** — kemungkinan besar setting "Inherit access from source repository" ke-reset tiap CI push, ngerusak baik Watchtower (VPS lama) maupun `docker pull` manual (EC2). Fix kali ini: `docker login` pakai **classic PAT** (`read:packages`) di instance, bukan gantungin ke toggle visibility yang keukur reset sendiri. Ketemu juga limitasi: fine-grained PAT GitHub belum support GHCR/Packages, harus classic token.
+
+**Akses SSH tumbang berulang karena IP dinamis.** Rule security group `"My IP"` itu snapshot sesaat — ISP/jaringan Indonesia sering ganti IP publik (apalagi kalau pindah WiFi↔hotspot), bikin rule stale dan nge-block sendiri (gejalanya `ssh -v` macet di `Connection established`, gak pernah dapet banner balik). Pindah ke **AWS Systems Manager Session Manager** — instance yang konek keluar (outbound HTTPS) ke Systems Manager, otentikasi IAM, gak peduli IP client. Port 22 di security group akhirnya bisa dicabut total.
+
+**Cutover domain paralel, bukan big-bang.** DNS TTL `bikepacking.cyou` diturunin ke 60 detik dulu, EC2 disetup & ditest lengkap (data ter-migrasi, login OAuth jalan) **sambil Nusa masih live**, baru A record di-switch. Karena domain gak berubah, gak perlu sentuh apa pun di Google OAuth Console (redirect URI tetap valid). Nusa dibiarin idle beberapa hari sebagai fallback sebelum beneran di-cancel.
+
 ## Ringkasan: rencana vs. kenyataan
 
 | Komponen | Rencana awal | Yang kepake |
 |---|---|---|
-| Provider VPS | Hetzner CX22 (4GB RAM) | Nusa (1GB RAM) |
+| Provider VPS | Hetzner CX22 (4GB RAM) | Nusa (1GB RAM) → **AWS EC2 Graviton** (`t4g.small`, 2GB) |
 | Reverse proxy | Caddy (auto-TLS) | nginx + certbot |
-| Database | Postgres lokal (container) | Supabase (Session pooler) |
-| Firewall | Asumsi udah ada | `firewalld` diinstall manual |
-| RAM safety net | Tidak direncanakan | Swap 2GB (wajib, bukan opsional) |
-| Observability | Wiring kode doang | Grafana Cloud + Alloy, beneran kekirim |
+| Database | Postgres lokal (container) | Supabase (Session pooler) → **Postgres self-hosted lagi** (container EC2) |
+| Firewall | Asumsi udah ada | `firewalld` diinstall manual (Nusa) → AWS Security Group + **SSM Session Manager** (gak butuh port SSH publik lagi) |
+| RAM safety net | Tidak direncanakan | Swap 2GB (wajib, bukan opsional) — kejadian lagi di EC2 |
+| CI image arch | Tidak dipikirin (asumsi `amd64` di mana-mana) | Multi-arch → **`arm64`-only native runner** setelah Nusa (x86) pensiun |
+| Observability | Wiring kode doang | Grafana Cloud + Alloy, beneran kekirim — jalan sama persis di EC2 |
 | Uptime monitoring | Tidak direncanakan | UptimeRobot (ping `/health` tiap 5 menit) |
