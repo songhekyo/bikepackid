@@ -32,7 +32,7 @@ Tujuan fase ini: ngerti primitif dasar (IAM, VPC, Security Group, EC2) tanpa nye
 ## Fase 2 — Deploy ulang arsitektur (BFF, gateway, microservice) — di sinilah belajar yang kamu incar
 
 - [ ] **BFF** — Rust/Go/Node (pilih salah satu, gak usah semua) jalan sebagai EC2 instance/container terpisah dari backend utama. Ini juga jadi tempat natural buat nambahin dukungan **Bearer token** (App mobile gak bisa pakai cookie httpOnly kayak browser) sebagai jembatan ke backend Rust yang cookie-based.
-- [ ] **AWS API Gateway** (produk asli, bukan self-hosted Kong/Traefik — karena tujuannya belajar nama produk ini spesifik) — taro di depan BFF/backend, coba fitur dasarnya: routing, rate limiting, request/response transformation. **Koreksi**: free tier "1 juta request/bulan gratis 12 bulan" cuma berlaku buat akun yang dibuat **sebelum Juli 2025** — akun baru (sesuai rencana Fase 0) dapetnya **kredit $200 sekali doang**, bukan free tier bulanan. Gak masalah di traffic pilot kita (lihat breakdown biaya di bawah) — HTTP API $1.00/juta request, buat ~10rb request/bulan itu ~$0.01/bulan.
+- [ ] **AWS API Gateway** (produk asli, bukan self-hosted Kong/Traefik — karena tujuannya belajar nama produk ini spesifik) — taro di depan BFF/backend, coba fitur dasarnya: routing, rate limiting, request/response transformation. **Koreksi**: free tier "1 juta request/bulan gratis 12 bulan" cuma berlaku buat akun yang dibuat **sebelum Juli 2025** — akun baru (sesuai rencana Fase 0) dapetnya **kredit sekali doang** (lihat angka real di bawah), bukan free tier bulanan. Gak masalah di traffic pilot kita (lihat breakdown biaya di bawah) — HTTP API $1.00/juta request, buat ~10rb request/bulan itu ~$0.01/bulan.
 - [ ] **ECS + Fargate** (container orchestration, versi "beneran" dari `docker compose` yang udah biasa dipakai) — **jangan mulai dari sini**, baru masuk setelah EC2+Docker Compose manual berasa udah nyaman. Fargate itu pay-per-resource (vCPU+RAM per detik container jalan) — predictable selama container-nya kecil & gak nyala 24/7 pas cuma eksperimen.
 
 Urutan sengaja EC2-dulu-baru-ECS: biar kerasa bedanya "container biasa" vs "container yang di-orchestrate", bukan langsung lompat ke abstraksi tinggi tanpa ngerti yang di-abstraksi-in apa.
@@ -42,7 +42,9 @@ Urutan sengaja EC2-dulu-baru-ECS: biar kerasa bedanya "container biasa" vs "cont
 - [ ] Pipeline GHCR+Watchtower yang udah ada **tetep bisa jalan apa adanya** di EC2 (Watchtower gak peduli VM-nya di mana) — gak wajib buru-buru ganti ke CodePipeline/CodeBuild. Migrasi ke situ jadi latihan terpisah kapan-kapan, bukan blocker migrasi awal.
 - [ ] Grafana Cloud + Alloy juga jalan sama persis di EC2 kayak di VPS lama — gak ada yang perlu diubah di sisi ini.
 
-## Estimasi biaya (region `ap-southeast-1` Singapore)
+## Estimasi biaya (region `ap-southeast-2` Sydney)
+
+**Catatan**: AWS versi "new experience" (Builder ID + Projects) nge-lock region ke `ap-southeast-2` Sydney secara otomatis, gak bisa dipilih manual — jadi bukan `ap-southeast-1` Singapore kayak asumsi awal. Angka di bawah tetap dipakai sebagai estimasi (harga Sydney vs Singapore beda tipis, gak signifikan buat skala pilot ini), tinggal disesuaikan kalau nanti ada perbedaan harga nyata yang keliatan pas resource beneran jalan.
 
 Dipisah antara yang **harus nyala 24/7** (backend buat pilot user) dan yang **cuma nyala pas lagi latihan** (BFF/gateway/Fargate) — nunjukin langsung dampak dari prinsip pemisahan production vs eksperimen di bawah.
 
@@ -70,7 +72,7 @@ Dipisah antara yang **harus nyala 24/7** (backend buat pilot user) dan yang **cu
 - **NAT Gateway** — ~$32+/bulan cuma buat nyala, di luar biaya data.
 - **Route 53** — gak perlu, DNS tetap di provider yang sekarang, tinggal ganti A record nunjuk ke IP EC2.
 
-**Buffer**: kredit $200 sekali dari akun baru (lihat catatan di Fase 2) nutup eksperimen berbulan-bulan sebelum biaya asli mulai kepakai.
+**Buffer (angka real, dicek langsung dari Billing → Credits)**: kredit **$120** — $100 dari "AWS Free Tier" + $20 bonus dari nyelesain task "Set up a cost budget using AWS Budgets" (Fase 0 di atas) — **expire 12 bulan dari signup** (bukan 6 bulan, koreksi dari estimasi awal). Karena jendela waktunya longgar, batasan yang beneran relevan itu **jumlah dollar terpakai**, bukan tanggal — cek "Total estimated amount used" di halaman Credits itu tiap minggu (bareng kebiasaan Cost Explorer). Rencana: kalau pakai `t4g.small` (~$17/bulan EC2+EBS), **terminate instance begitu kepakai udah nyampe ~$80-90** (nyisain buffer ~$30-40 buat eksperimen Fase 2) — kira-kira jatuh di bulan ke-5 dari sekarang, tapi angka aktual di Billing lebih akurat daripada patokan kalender.
 
 ## Prinsip hemat biaya (pegang terus sepanjang eksperimen)
 
@@ -83,6 +85,6 @@ Dipisah antara yang **harus nyala 24/7** (backend buat pilot user) dan yang **cu
 
 ## Belum diputuskan / didiskusikan lebih lanjut
 
-- Region AWS mana (latency ke Indonesia — kemungkinan `ap-southeast-1` Singapore, sama kayak pertimbangan provider lain).
+- ~~Region AWS mana~~ — **udah diputuskan (dipaksa AWS)**: `ap-southeast-2` Sydney, gak bisa dipilih manual di AWS "new experience" (Builder ID + Projects).
 - Apa `bikepacking.cyou` (domain yang udah jalan) langsung dipindah pas migrasi, atau ada periode paralel VPS lama + AWS baru buat mastiin stabil dulu sebelum cutover.
 - Kapan/apa Postgres (Supabase) tetap dipertahankan sebagai managed service eksternal, atau di titik tertentu juga dipindah ke RDS (buat belajar RDS) — belum ada keputusan.
