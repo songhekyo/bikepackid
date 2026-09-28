@@ -23,7 +23,7 @@ trap cleanup EXIT
 
 echo "Downloading ${BACKUP_KEY} from R2..."
 aws s3 cp "s3://${R2_BACKUP_BUCKET}/${BACKUP_KEY}" "$TMP_FILE" \
-  --endpoint-url "$R2_BACKUP_ENDPOINT"
+  --endpoint-url "$R2_BACKUP_ENDPOINT" --region auto
 gunzip "$TMP_FILE"
 
 echo "Creating throwaway database '${TARGET_DB}'..."
