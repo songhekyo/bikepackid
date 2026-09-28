@@ -1,0 +1,25 @@
+# Override file for environments that run their own Postgres instead of
+# Supabase (e.g. the AWS EC2 learning instance) — merged on top of
+# docker-compose.yml with `-f docker-compose.yml -f docker-compose.postgres.yml`.
+# The VPS deploy (DEPLOY.md) never references this file and keeps using
+# Supabase unchanged.
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bikepackid
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: bikepackid
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Not exposed to the host/internet, same isolation as `alloy` below —
+    # only `backend` can reach it, over the Docker-internal network by
+    # service name (`postgres`).
+
+  backend:
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
