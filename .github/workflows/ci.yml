@@ -66,23 +66,16 @@ jobs:
       - name: cargo audit
         run: cargo audit
 
-  # Built per-arch on a native runner each (not one job cross-building both
-  # via QEMU) — emulated Rust compilation is dramatically slower than native
-  # since compilers are syscall/thread-heavy, the worst case for emulation
-  # overhead. `ubuntu-24.04-arm` is a real ARM64 GitHub-hosted runner.
-  build:
+  # arm64-only, on a native ARM64 GitHub-hosted runner — amd64 was needed
+  # while the Nusa VPS (x86) was still live; now that it's decommissioned
+  # (production is the AWS EC2 Graviton instance), arm64 is the only
+  # deployment target. Native runner (not QEMU) since emulated Rust
+  # compilation is dramatically slower — compilers are syscall/thread-heavy,
+  # the worst case for emulation overhead.
+  build-and-push:
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    strategy:
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-latest
-            suffix: amd64
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-            suffix: arm64
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-24.04-arm
     permissions:
       packages: write
       contents: read
@@ -101,37 +94,8 @@ jobs:
         with:
           context: backend
           push: true
-          platforms: ${{ matrix.platform }}
           build-args: |
             GIT_SHA=${{ github.sha }}
           tags: |
-            ghcr.io/songhekyo/bikepackid-backend:sha-${{ github.sha }}-${{ matrix.suffix }}
-
-  # Combines the two single-arch images built above into one multi-arch
-  # manifest — this is metadata-only (no rebuild), so it's fast regardless
-  # of how long the arch-specific builds above took.
-  merge-manifest:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-    steps:
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Create and push multi-arch manifest
-        # Overrides the workflow-level `defaults.run.working-directory:
-        # backend` — this job never checks out the repo (it only combines
-        # already-pushed image digests), so `backend` doesn't exist here.
-        working-directory: .
-        run: |
-          docker buildx imagetools create \
-            -t ghcr.io/songhekyo/bikepackid-backend:latest \
-            -t ghcr.io/songhekyo/bikepackid-backend:sha-${{ github.sha }} \
-            ghcr.io/songhekyo/bikepackid-backend:sha-${{ github.sha }}-amd64 \
-            ghcr.io/songhekyo/bikepackid-backend:sha-${{ github.sha }}-arm64
+            ghcr.io/songhekyo/bikepackid-backend:latest
+            ghcr.io/songhekyo/bikepackid-backend:sha-${{ github.sha }}
