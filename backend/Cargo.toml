@@ -3,14 +3,8 @@ name = "bikepackid_backend"
 version = "0.1.0"
 edition = "2021"
 
-# Cargo's default for the release profile is `incremental = false` — every
-# `cargo build --release` recompiles from scratch even when only a few lines
-# changed. Turning it on costs nothing (still produces a normal release
-# binary) and matters a lot on the constrained VPS this used to build on.
-[profile.release]
-incremental = true
-
 [dependencies]
+bikepackid_common = { path = "../common" }
 axum = { version = "0.7", features = ["macros"] }
 axum-extra = { version = "0.9", features = ["cookie"] }
 tokio = { version = "1", features = ["full"] }

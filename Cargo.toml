@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = ["backend", "common"]
+
+# Moved from backend/Cargo.toml — Cargo requires profile settings to live in
+# the workspace root once there's more than one member, not per-crate.
+[profile.release]
+incremental = true

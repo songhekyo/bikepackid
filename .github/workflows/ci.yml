@@ -50,7 +50,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: backend
+          # "." (repo root), not "backend" — Cargo.toml at the repo root
+          # makes it the actual workspace root (backend + common members)
+          # since the monorepo restructuring.
+          workspaces: .
 
       - name: Apply migrations
         run: for f in migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done
@@ -92,7 +95,11 @@ jobs:
 
       - uses: docker/build-push-action@v6
         with:
-          context: backend
+          # Repo root, not backend/ — the Dockerfile now needs to see the
+          # sibling `common` crate too (backend depends on it via a path
+          # dependency since the monorepo restructuring).
+          context: .
+          file: backend/Dockerfile
           push: true
           build-args: |
             GIT_SHA=${{ github.sha }}

@@ -1,0 +1,13 @@
+[package]
+name = "bikepackid_common"
+version = "0.1.0"
+edition = "2021"
+
+# Types shared across services in this monorepo (e.g. backend's
+# user-service and journey-service) — currently just User/Role, the
+# minimum both need to agree on without duplicating the definition.
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+sqlx = { version = "0.8", default-features = false, features = ["postgres", "uuid", "chrono", "derive", "macros"] }
+uuid = { version = "1", features = ["v4", "serde"] }
