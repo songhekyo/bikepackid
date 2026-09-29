@@ -101,6 +101,32 @@ sudo certbot --nginx -d bikepacking.cyou
 ```
 **Gak ada langkah SELinux** — Ubuntu gak aktifin itu default (beda dari Fedora yang butuh `setsebool -P httpd_can_network_connect on`).
 
+## journey-service (Journey/Checkpoint/Post, Fase 2)
+
+Kedua image (`bikepackid-backend` dan `bikepackid-journey-service`) di-build+push otomatis tiap push ke `main` (lihat `.github/workflows/ci.yml`), tapi **belum otomatis jalan** di instance manapun sampai `docker-compose.yml` di server benar-benar mendefinisikan servicenya — `journey-service` udah ditambahin ke `docker-compose.yml` di repo ini, tapi deploy pertama kalinya tetap manual sekali:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml logs -f journey-service
+```
+Cari `bikepackid journey-service listening on port 8081` tanpa `panicked at ...`. Setelah ini, Watchtower ikut nge-track service ini juga (label `watchtower.enable=true` udah ada di compose-nya) — sama kayak backend, gak perlu deploy manual lagi abis ini.
+
+**Gak ada env var baru yang perlu diisi** — `journey-service` pakai `.env` yang sama persis dengan backend (`DATABASE_URL`, `JWT_SECRET` — *harus* sama biar sesi login yang backend keluarin valid buat journey-service juga, `FRONTEND_URL`, `R2_*`, `OTEL_EXPORTER_OTLP_ENDPOINT`); `PORT`-nya di-override ke `8081` langsung di `docker-compose.yml`, bukan dari `.env`.
+
+**Nginx routing** — ini yang masih manual, belum ke-otomasi. Endpoint-endpoint journey/checkpoint/post (`/journeys`, `/me/journeys`, `/checkpoints/*`, `/uploads/presign-url`) perlu di-route ke `127.0.0.1:8081`, sisanya tetep ke `127.0.0.1:8080`. Tambahin `location` block sebelum `location /` di `/etc/nginx/sites-available/bikepackid.conf`:
+```nginx
+    location ~ ^/(journeys|me/journeys|checkpoints|uploads/presign-url) {
+        proxy_pass http://127.0.0.1:8081;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+```
+lalu `sudo nginx -t && sudo systemctl reload nginx`. Sebelum ini di-apply, frontend yang manggil endpoint-endpoint itu masih ngarah ke backend lama (yang udah gak punya route-nya lagi setelah PR ekstraksi journey-service) — jangan reload nginx dengan block ini sebelum bener-bener siap cutover trafik-nya.
+
 ## Migrasi data dari Supabase (sekali doang, pas cutover)
 
 ```bash

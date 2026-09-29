@@ -22,11 +22,37 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
 
-  # Local OTLP collector: receives traces from the backend and forwards
-  # them to Grafana Cloud with the account credentials, so the backend
-  # itself never needs to know them (it only ever talks to this container
-  # over the Docker-internal network, unauthenticated). Not exposed to the
-  # host or the internet — only `backend` can reach it, via service name.
+  # Journey/Checkpoint/Post split out of `backend` into its own
+  # deployable service (see docs/AWS_MIGRATION.md Fase 2) — shares the
+  # same Postgres and `.env` as backend (DATABASE_URL, JWT_SECRET,
+  # FRONTEND_URL, R2_*, OTEL_EXPORTER_OTLP_ENDPOINT are all already there
+  # since backend needs the same values), only `PORT` differs.
+  journey-service:
+    image: ghcr.io/songhekyo/bikepackid-journey-service:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Overrides the `.env` file's PORT=8080 (backend's own) — env_file
+    # values are the container's defaults, and a service's own
+    # `environment` takes precedence over them for the same key.
+    environment:
+      PORT: "8081"
+    # Same reasoning as backend's port mapping above — published so nginx
+    # can reverse-proxy specific paths (/journeys, /checkpoints,
+    # /uploads/presign-url, /me/journeys) here instead of to backend:8080.
+    # Nginx itself isn't tracked in this repo (see DEPLOY_AWS.md) — adding
+    # that routing is a manual step on the server once this is deployed.
+    ports:
+      - "8081:8081"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # Local OTLP collector: receives traces from backend and journey-service
+  # and forwards them to Grafana Cloud with the account credentials, so
+  # neither service itself needs to know them (they only ever talk to this
+  # container over the Docker-internal network, unauthenticated). Not
+  # exposed to the host or the internet — only containers on this compose
+  # network can reach it, via service name.
   alloy:
     image: grafana/alloy:latest
     restart: unless-stopped
@@ -38,12 +64,12 @@ services:
       GRAFANA_CLOUD_API_KEY: ${GRAFANA_CLOUD_API_KEY}
       GRAFANA_CLOUD_OTLP_ENDPOINT: ${GRAFANA_CLOUD_OTLP_ENDPOINT}
 
-  # Polls GHCR every 5 minutes for a new `backend` image digest and, when it
-  # finds one, pulls it and recreates the container automatically — this is
-  # what makes "merge to main" actually mean "live" without connecting in
-  # for a manual `docker compose pull && up -d` every time (see
-  # DEPLOY_AWS.md).
-  # Scoped to WATCHTOWER_LABEL_ENABLE + the label on `backend` above on
+  # Polls GHCR every 5 minutes for a new image digest on any labeled
+  # service (`backend`, `journey-service`) and, when it finds one, pulls
+  # it and recreates that container automatically — this is what makes
+  # "merge to main" actually mean "live" without connecting in for a
+  # manual `docker compose pull && up -d` every time (see DEPLOY_AWS.md).
+  # Scoped to WATCHTOWER_LABEL_ENABLE + each service's own label on
   # purpose: `alloy` tracks `grafana/alloy:latest` too, but we don't want it
   # silently auto-upgrading — Alloy's config syntax has already broken once
   # this project across versions (see docs/INFRA_HISTORY.md), so that
