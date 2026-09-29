@@ -48,9 +48,16 @@ COPY journey-service/src journey-service/src
 ARG GIT_SHA=unknown
 ENV GIT_SHA=$GIT_SHA
 
-# Without this, cargo may see main.rs's mtime as older than the cached
-# build output and skip recompiling the real source.
-RUN touch journey-service/src/main.rs && cargo build --release -p bikepackid_journey_service
+# Without this, BuildKit's COPY preserves each file's mtime from git
+# rather than setting it to "now" — so the real common/src (restored
+# above) can end up looking *older* than the stale rlib cargo already
+# built from common's empty dummy lib.rs in the dependency-only build
+# above, and cargo skips rebuilding it, silently linking journey-service
+# against a bikepackid_common with none of its real modules. Touch every
+# real source file just copied in (not just this crate's own entrypoint)
+# so cargo always sees them as newer than anything already built.
+RUN find journey-service/src common/src -name '*.rs' -exec touch {} + \
+    && cargo build --release -p bikepackid_journey_service
 
 # ---- Runtime stage ----
 FROM debian:bookworm-slim
