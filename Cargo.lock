@@ -194,28 +194,18 @@ dependencies = [
  "bikepackid_common",
  "chrono",
  "dotenvy",
- "jsonwebtoken",
- "moka",
  "oauth2",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
  "percent-encoding",
  "reqwest 0.12.28",
- "rusty-s3",
  "serde",
  "serde_json",
  "sqlx",
- "thiserror 1.0.69",
  "time",
  "tokio",
  "tower 0.5.3",
  "tower-http 0.5.2",
  "tower_governor",
  "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
- "url",
  "uuid",
 ]
 
@@ -223,9 +213,41 @@ dependencies = [
 name = "bikepackid_common"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "chrono",
+ "jsonwebtoken",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
  "serde",
+ "serde_json",
  "sqlx",
+ "thiserror 1.0.69",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "bikepackid_journey_service"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "axum-extra",
+ "bikepackid_common",
+ "chrono",
+ "dotenvy",
+ "moka",
+ "rusty-s3",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tower 0.5.3",
+ "tower-http 0.5.2",
+ "tracing",
+ "url",
  "uuid",
 ]
 

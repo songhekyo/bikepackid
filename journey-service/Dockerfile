@@ -1,0 +1,58 @@
+# Build context is the repo root (not journey-service/) — this crate
+# depends on the workspace-sibling `common` crate via a path dependency,
+# which needs to be visible in the build context. See
+# .github/workflows/ci.yml for the `context: .` / `file:
+# journey-service/Dockerfile` pairing that makes this work.
+
+# ---- Build stage ----
+FROM rust:1-slim-bookworm AS builder
+WORKDIR /app
+
+# openssl-sys (pulled in by sqlx's native-tls runtime) needs these to
+# compile.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Cache dependency compilation in its own layer: this only re-runs when a
+# Cargo.toml/Cargo.lock changes, not on every source edit. `backend`'s
+# manifest has to be present too — the workspace root Cargo.toml lists it
+# as a member, so Cargo needs to see it to resolve the workspace graph —
+# but its source is never copied in or compiled here, only journey-service
+# and its `common` dependency are.
+COPY Cargo.toml Cargo.lock ./
+COPY backend/Cargo.toml backend/Cargo.toml
+COPY common/Cargo.toml common/Cargo.toml
+COPY journey-service/Cargo.toml journey-service/Cargo.toml
+RUN mkdir -p common/src journey-service/src \
+    && echo "" > common/src/lib.rs \
+    && echo "fn main() {}" > journey-service/src/main.rs
+RUN cargo build --release -p bikepackid_journey_service && rm -rf common/src journey-service/src
+
+COPY common/src common/src
+COPY journey-service/src journey-service/src
+
+# Set right before the real build (not above, next to the dependency-only
+# build) so a changing commit SHA doesn't invalidate the dependency-layer
+# cache. Baked in via `option_env!` in src/routes.rs, not read at
+# container runtime — exposed at GET /version to confirm what's deployed
+# without SSHing in to inspect Docker image digests.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
+
+# Without this, cargo may see main.rs's mtime as older than the cached
+# build output and skip recompiling the real source.
+RUN touch journey-service/src/main.rs && cargo build --release -p bikepackid_journey_service
+
+# ---- Runtime stage ----
+FROM debian:bookworm-slim
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/bikepackid_journey_service ./bikepackid_journey_service
+
+EXPOSE 8081
+CMD ["./bikepackid_journey_service"]

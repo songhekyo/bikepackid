@@ -1,0 +1,38 @@
+[package]
+name = "bikepackid_journey_service"
+version = "0.1.0"
+edition = "2021"
+
+# Second deployable service in this monorepo, split out of `backend`
+# (Journey/Checkpoint/Post) — see docs/AWS_MIGRATION.md Fase 2. Shares the
+# same Postgres database as `backend` (schema/migrations still owned by
+# `backend`) but is its own process/container with its own session-auth
+# check — see src/auth.rs for why that's duplicated rather than shared.
+[dependencies]
+bikepackid_common = { path = "../common" }
+axum = { version = "0.7", features = ["macros"] }
+axum-extra = { version = "0.9", features = ["cookie"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "request-id"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-native-tls", "postgres", "uuid", "chrono", "derive", "macros"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+dotenvy = "0.15"
+tracing = "0.1"
+# Presigned-URL-only S3 client (no HTTP client of its own, pure SigV4
+# signing math) — chosen over aws-sdk-s3 specifically for compile time:
+# we only ever need to hand out a signed PUT URL, never call S3/R2
+# ourselves, so the full SDK would be dead weight.
+rusty-s3 = "0.10"
+url = "2"
+# In-process cache for GET /journeys (the public feed) — lives in this
+# service's own memory, not a separate service like Redis, so it doesn't
+# add another thing to run. TTL-based only (no invalidation on write): a
+# stale-for-up-to-30s public feed is an acceptable trade for not having to
+# track which cache entries a given write should evict.
+moka = { version = "0.12", features = ["future"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

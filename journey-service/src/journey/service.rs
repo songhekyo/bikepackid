@@ -1,3 +1,4 @@
+use bikepackid_common::{error::AppError, user::User};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -5,7 +6,6 @@ use super::{
     Checkpoint, CreateCheckpointRequest, CreateJourneyRequest, CreatePostRequest, Journey,
     JourneyStatus, Post, UpdateJourneyRequest,
 };
-use crate::{error::AppError, models::User};
 
 /// The one place "can this user edit this journey" is decided — every
 /// write path calls through here instead of repeating the check, so a
@@ -335,8 +335,8 @@ pub async fn list_posts(
 mod tests {
     use super::*;
     use crate::journey::PostType;
-    use crate::models::Role;
     use crate::test_support;
+    use bikepackid_common::user::Role;
 
     fn journey_request(title: &str) -> CreateJourneyRequest {
         CreateJourneyRequest {

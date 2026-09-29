@@ -3,6 +3,10 @@ name = "bikepackid_backend"
 version = "0.1.0"
 edition = "2021"
 
+# User/session/auth service — Journey/Checkpoint/Post moved out to
+# journey-service (see ../journey-service), so R2/moka/rusty-s3/url and
+# the OTel/JWT/error/audit infrastructure (now in ../common) are no
+# longer direct dependencies here.
 [dependencies]
 bikepackid_common = { path = "../common" }
 axum = { version = "0.7", features = ["macros"] }
@@ -18,30 +22,10 @@ time = "0.3"
 dotenvy = "0.15"
 oauth2 = { version = "5", features = ["reqwest"] }
 reqwest = { version = "0.12", features = ["json"] }
-jsonwebtoken = "9"
-thiserror = "1"
 anyhow = "1"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-opentelemetry = "0.32.0"
-opentelemetry_sdk = { version = "0.32.1", features = ["rt-tokio", "experimental_trace_batch_span_processor_with_async_runtime"] }
-opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["http-proto", "reqwest-client", "trace"] }
-tracing-opentelemetry = "0.33.0"
 tower_governor = { version = "0.3.0", features = ["tracing"] }
 percent-encoding = "2.3.2"
-# Presigned-URL-only S3 client (no HTTP client of its own, pure SigV4
-# signing math) — chosen over aws-sdk-s3 specifically for compile time:
-# we only ever need to hand out a signed PUT URL, never call S3/R2
-# ourselves, so the full SDK would be dead weight.
-rusty-s3 = "0.10"
-url = "2"
-# In-process cache for GET /journeys (the public feed) — lives in the
-# backend's own memory, not a separate service like Redis, so it doesn't
-# add another thing to run on the 1GB VPS. TTL-based only (no
-# invalidation on write): a stale-for-up-to-30s public feed is an
-# acceptable trade for not having to track which cache entries a given
-# write should evict.
-moka = { version = "0.12", features = ["future"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

@@ -10,8 +10,8 @@ use crate::config::Config;
 const UPLOAD_URL_TTL: Duration = Duration::from_secs(15 * 60);
 
 /// Wraps the R2 bucket/credentials needed to hand out presigned upload
-/// URLs. The backend never uploads or reads file bytes itself — see
-/// docs/SYSTEM_DESIGN.md for why (keeps large transfers off the VPS).
+/// URLs. This service never uploads or reads file bytes itself — see
+/// docs/SYSTEM_DESIGN.md for why (keeps large transfers off this service).
 pub struct R2 {
     bucket: Bucket,
     credentials: Credentials,
@@ -62,12 +62,8 @@ mod tests {
         Config {
             database_url: String::new(),
             jwt_secret: String::new(),
-            google_client_id: String::new(),
-            google_client_secret: String::new(),
-            google_redirect_url: "http://localhost".to_string(),
             frontend_url: "http://localhost".to_string(),
-            port: 8080,
-            cookie_secure: true,
+            port: 8081,
             r2_account_id: "test-account".to_string(),
             r2_access_key_id: "test-key".to_string(),
             r2_secret_access_key: "test-secret".to_string(),

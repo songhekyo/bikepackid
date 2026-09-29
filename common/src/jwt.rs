@@ -3,7 +3,7 @@ use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation}
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::models::Role;
+use crate::user::Role;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -13,8 +13,9 @@ pub struct Claims {
     pub exp: i64,
 }
 
-/// `jti` and `expires_at` come from a `sessions` row (see `auth::session`),
-/// so the JWT's lifetime always matches a record we can revoke server-side.
+/// `jti` and `expires_at` come from a `sessions` row (see the owning
+/// service's session module), so the JWT's lifetime always matches a
+/// record that service can revoke server-side.
 pub fn issue(user_id: Uuid, role: Role, jti: Uuid, expires_at: DateTime<Utc>, secret: &str) -> String {
     let claims = Claims {
         sub: user_id,
