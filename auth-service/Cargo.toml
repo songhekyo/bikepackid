@@ -1,12 +1,13 @@
 [package]
-name = "bikepackid_backend"
+name = "bikepackid_auth_service"
 version = "0.1.0"
 edition = "2021"
 
 # User/session/auth service — Journey/Checkpoint/Post moved out to
 # journey-service (see ../journey-service), so R2/moka/rusty-s3/url and
 # the OTel/JWT/error/audit infrastructure (now in ../common) are no
-# longer direct dependencies here.
+# longer direct dependencies here. Renamed from `backend` once it was no
+# longer "the" backend, just one of two services.
 [dependencies]
 bikepackid_common = { path = "../common" }
 axum = { version = "0.7", features = ["macros"] }

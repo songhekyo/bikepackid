@@ -32,7 +32,7 @@ const SESSION_PURGE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
-    let telemetry = bikepackid_common::telemetry::init("bikepackid_backend");
+    let telemetry = bikepackid_common::telemetry::init("bikepackid_auth_service");
 
     let config = Config::from_env();
 
@@ -137,7 +137,7 @@ async fn main() {
         .await
         .expect("failed to bind port");
 
-    tracing::info!("bikepackid backend listening on port {port}");
+    tracing::info!("bikepackid auth-service listening on port {port}");
     // `with_connect_info` makes the raw peer address available to the rate
     // limiter as a fallback for when x-forwarded-for/x-real-ip/forwarded
     // aren't set (e.g. direct connections in local dev, no proxy).

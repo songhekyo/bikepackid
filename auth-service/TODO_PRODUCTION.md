@@ -1,6 +1,6 @@
 # TODO sebelum production
 
-Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Checkpoint/marketplace) akan punya checklist sendiri begitu diimplementasikan — lihat `docs/SYSTEM_DESIGN.md`.
+Checklist buat sistem User (auth-service) yang sudah dibangun. Item lain (Journey/Checkpoint/marketplace) akan punya checklist sendiri begitu diimplementasikan — lihat `docs/SYSTEM_DESIGN.md`.
 
 ## Wajib sebelum live ke user beneran
 
@@ -10,8 +10,8 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 ## Penting, tapi bisa menyusul cepat setelah live
 
 - [ ] **Migrasi review** — pastikan proses deploy menjalankan `sqlx migrate run` terhadap DB production dengan aman (idealnya lewat CI/CD step terpisah, bukan otomatis saat app start di multi-instance, supaya tidak race kalau nanti scale ke >1 instance).
-- [ ] **`pending_logins` dan rate limiter di memory** — keduanya cuma aman selama backend jalan 1 instance. Begitu di-scale ke >1 instance (misal buat load balancing), tiap instance punya kuota rate-limit sendiri-sendiri (efektifnya limit riil jadi N× lebih longgar) dan `pending_logins` tidak konsisten antar instance. Pindahkan ke Redis atau state store bersama kalau sudah butuh multi-instance.
-- [ ] **`cargo audit` terjadwal** — `.github/workflows/ci.yml` udah jalanin `cargo audit` tiap push/PR, tapi itu cuma ke-trigger kalau ada kode yang berubah; RUSTSEC advisory baru bisa muncul kapan aja buat `Cargo.lock` yang udah lama gak disentuh. Tambahin trigger `schedule` (cron mingguan) di workflow yang sama biar tetep ke-cek walau gak ada push. Cek juga apakah pengecualian `RUSTSEC-2023-0071` di `.cargo/audit.toml` sudah ada fix upstream (lihat catatan di file itu).
+- [ ] **`pending_logins` dan rate limiter di memory** — keduanya cuma aman selama auth-service jalan 1 instance. Begitu di-scale ke >1 instance (misal buat load balancing), tiap instance punya kuota rate-limit sendiri-sendiri (efektifnya limit riil jadi N× lebih longgar) dan `pending_logins` tidak konsisten antar instance. Pindahkan ke Redis atau state store bersama kalau sudah butuh multi-instance.
+- [ ] **`cargo audit` terjadwal** — `.github/workflows/ci.yml` udah jalanin `cargo audit` tiap push/PR, tapi itu cuma ke-trigger kalau ada kode yang berubah; RUSTSEC advisory baru bisa muncul kapan aja buat `Cargo.lock` yang udah lama gak disentuh. Tambahin trigger `schedule` (cron mingguan) di workflow yang sama biar tetep ke-cek walau gak ada push. Cek juga apakah pengecualian `RUSTSEC-2023-0071` di `../.cargo/audit.toml` sudah ada fix upstream (lihat catatan di file itu).
 - [ ] **Privasi data lokasi** — begitu fitur Journey/Checkpoint jalan (yang nyimpen lat/lng user), perlu kebijakan privasi jelas: siapa yang bisa lihat lokasi, retensi data, dan idealnya opsi "sembunyikan lokasi real-time" karena data lokasi itu sensitif.
 
 ## Nice to have (tidak blocking launch awal)
@@ -22,7 +22,7 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 
 ## Sudah beres
 
-- [x] **Backup database** — `backend/scripts/backup-db.sh` (dump → R2 bucket privat `bikepackid-backups`, retention 30 hari) jalan via cron harian di EC2 production, alert healthchecks.io aktif kalau gagal/gak jalan. Restore test (`restore-db.sh`) udah dicoba, row count `users`/`journeys` cocok sama database live.
+- [x] **Backup database** — `auth-service/scripts/backup-db.sh` (dump → R2 bucket privat `bikepackid-backups`, retention 30 hari) jalan via cron harian di EC2 production, alert healthchecks.io aktif kalau gagal/gak jalan. Restore test (`restore-db.sh`) udah dicoba, row count `users`/`journeys` cocok sama database live.
 - [x] **CI** — `.github/workflows/ci.yml` jalanin `cargo test`, `cargo clippy`, `cargo audit` tiap push/PR, plus build (native `arm64`) & push image Docker ke GHCR tiap push ke `main` — server tinggal `docker compose pull`, gak pernah compile Rust sendiri lagi (lihat `DEPLOY_AWS.md`).
 - [x] Login tanpa password (Google OAuth only, PKCE + CSRF state).
 - [x] Session bisa di-revoke (tabel `sessions`, dicek tiap request).
@@ -42,7 +42,7 @@ Checklist buat sistem User (backend) yang sudah dibangun. Item lain (Journey/Che
 - [x] HTTP client ke Google punya timeout (`connect_timeout` 5s, `timeout` 10s) — sebelumnya `reqwest::Client::new()` default tanpa timeout sama sekali, request bisa menggantung selamanya kalau Google lambat/hang.
 - [x] Baris `sessions` yang sudah revoked/expired dibersihkan otomatis (background task tiap 6 jam) — sebelumnya tabel `sessions` tidak pernah dibersihkan sama sekali.
 - [x] `AuthUser` extractor sekarang satu query yang sekaligus memverifikasi sesi itu benar-benar milik user di klaim JWT (bukan dua query terpisah yang implisit saling percaya).
-- [x] User yang cancel di consent screen Google (`error=access_denied`) di-redirect halus ke frontend, bukan 400 mentah dengan pesan deserialisasi. Backend cuma relay nilai `error` apa adanya (tidak melabeli sendiri jadi "cancelled") — frontend yang menentukan arti & UX-nya. Validasi `state` (harus percobaan login yang dikenal & belum kedaluwarsa) selalu jalan duluan sebelum `error` dibaca, supaya `error` tidak bisa di-reflect balik lewat `state` sembarangan.
+- [x] User yang cancel di consent screen Google (`error=access_denied`) di-redirect halus ke frontend, bukan 400 mentah dengan pesan deserialisasi. auth-service cuma relay nilai `error` apa adanya (tidak melabeli sendiri jadi "cancelled") — frontend yang menentukan arti & UX-nya. Validasi `state` (harus percobaan login yang dikenal & belum kedaluwarsa) selalu jalan duluan sebelum `error` dibaca, supaya `error` tidak bisa di-reflect balik lewat `state` sembarangan.
 - [x] Error "percobaan login kedaluwarsa/tidak dikenal" sekarang 400 (kesalahan klien), terpisah dari error Google beneran down yang tetap 502 — sebelumnya keduanya dilaporkan sama.
 - [x] `users.email` tidak lagi `UNIQUE` (migrasi 0004) — email yang didaur ulang antar akun Google berbeda tidak lagi bikin login gagal 500.
 - [x] Masa berlaku cookie sesi diturunkan dari `expires_at` baris `sessions` (bukan konstanta terpisah yang bisa mencle dari nilai di database).

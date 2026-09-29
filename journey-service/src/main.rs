@@ -36,8 +36,8 @@ async fn main() {
         .expect("failed to connect to database");
 
     // No `sqlx::migrate!` here — the `journeys`/`checkpoints`/`posts`
-    // schema is still owned and migrated by `backend`; this service only
-    // ever reads/writes tables backend's migrations already created.
+    // schema is still owned and migrated by `auth-service`; this service only
+    // ever reads/writes tables auth-service's migrations already created.
     let r2 = R2::from_config(&config);
     let journeys_cache = journey::new_journey_list_cache();
 
@@ -63,7 +63,7 @@ async fn main() {
 
     let request_id_header = HeaderName::from_static(REQUEST_ID_HEADER);
 
-    // Same request-id/tracing layering as `backend` — see the comment
+    // Same request-id/tracing layering as `auth-service` — see the comment
     // there for why the layer order matters.
     let app = routes::router()
         .with_state(state)
@@ -114,7 +114,7 @@ async fn main() {
 }
 
 /// Waits for Ctrl+C or SIGTERM (the signal a container platform sends on
-/// deploy/restart) — same rationale as `backend`'s copy of this function.
+/// deploy/restart) — same rationale as `auth-service`'s copy of this function.
 async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()

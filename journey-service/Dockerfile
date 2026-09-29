@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Cache dependency compilation in its own layer: this only re-runs when a
-# Cargo.toml/Cargo.lock changes, not on every source edit. `backend`'s
+# Cargo.toml/Cargo.lock changes, not on every source edit. `auth-service`'s
 # manifest AND a dummy target have to be present too — the workspace root
 # Cargo.toml lists it as a member, so Cargo needs to see a valid package
 # there (a manifest alone isn't enough — it also needs something Cargo can
@@ -23,18 +23,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # source is never copied in or compiled here, only journey-service and its
 # `common` dependency are.
 COPY Cargo.toml Cargo.lock ./
-COPY backend/Cargo.toml backend/Cargo.toml
+COPY auth-service/Cargo.toml auth-service/Cargo.toml
 COPY common/Cargo.toml common/Cargo.toml
 COPY journey-service/Cargo.toml journey-service/Cargo.toml
-RUN mkdir -p backend/src common/src journey-service/src \
-    && echo "fn main() {}" > backend/src/main.rs \
+RUN mkdir -p auth-service/src common/src journey-service/src \
+    && echo "fn main() {}" > auth-service/src/main.rs \
     && echo "" > common/src/lib.rs \
     && echo "fn main() {}" > journey-service/src/main.rs
 # Only common/src and journey-service/src get replaced with real source
-# below — backend/src's dummy stays put for the rest of this build; it's
-# never compiled again and never copied into the runtime stage, so there's
-# nothing to gain by removing it (and removing it would break the second
-# `cargo build` below the same way the first COPY's absence did).
+# below — auth-service/src's dummy stays put for the rest of this build;
+# it's never compiled again and never copied into the runtime stage, so
+# there's nothing to gain by removing it (and removing it would break the
+# second `cargo build` below the same way the first COPY's absence did).
 RUN cargo build --release -p bikepackid_journey_service && rm -rf common/src journey-service/src
 
 COPY common/src common/src

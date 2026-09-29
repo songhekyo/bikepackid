@@ -3,8 +3,8 @@ use std::env;
 #[derive(Clone)]
 pub struct Config {
     pub database_url: String,
-    /// Must match `backend`'s JWT_SECRET exactly — this service verifies
-    /// tokens `backend` issued at login, it never issues its own.
+    /// Must match `auth-service`'s JWT_SECRET exactly — this service verifies
+    /// tokens `auth-service` issued at login, it never issues its own.
     pub jwt_secret: String,
     pub frontend_url: String,
     pub port: u16,

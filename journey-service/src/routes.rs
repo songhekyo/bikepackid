@@ -35,7 +35,7 @@ pub fn router() -> Router<SharedState> {
 }
 
 /// Readiness check for load balancers/orchestrators — actually touches the
-/// database instead of returning a static 200. Mirrors `backend`'s
+/// database instead of returning a static 200. Mirrors `auth-service`'s
 /// `routes::health::health` (see docs/INFRA_HISTORY.md for why it's
 /// wired this way).
 async fn health(State(state): State<SharedState>) -> Response {

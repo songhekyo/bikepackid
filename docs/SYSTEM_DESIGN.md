@@ -2,7 +2,7 @@
 
 Portal media + marketplace untuk komunitas bikepacker Indonesia. Dokumen ini merangkum keputusan desain sistem yang sudah diambil, supaya tidak hilang di percakapan dan bisa jadi acuan pengembangan lanjutan.
 
-Status implementasi saat ini: **sistem User** (login Google OAuth + role) dan **Journey/Checkpoint/Post inti** (termasuk upload foto ke R2) **sudah dibangun** di `backend/` (Rust/Axum/Postgres). Entity lain di bawah ini (TrackSegment, Journey Equipment, Journey Sponsors, Report, Marketplace) **belum diimplementasikan** — statusnya rencana/desain.
+Status implementasi saat ini: **sistem User** (login Google OAuth + role) dan **Journey/Checkpoint/Post inti** (termasuk upload foto ke R2) **sudah dibangun**, di dua service terpisah dalam monorepo Rust/Axum/Postgres yang sama: `auth-service/` (User, dulu namanya `backend/`) dan `journey-service/` (Journey/Checkpoint/Post — diekstrak keluar dari `auth-service` belakangan, lihat `docs/AWS_MIGRATION.md` Fase 2). Entity lain di bawah ini (TrackSegment, Journey Equipment, Journey Sponsors, Report, Marketplace) **belum diimplementasikan** — statusnya rencana/desain.
 
 ## Roadmap
 
@@ -178,7 +178,7 @@ Alur: user lapor → `Report` (status `open`) + konten jadi `flagged` (tetap tay
 
 Entity yang perlu dirancang saat masuk Fase 4 roadmap: `Product`, `Order`, `OrderItem`, inventori/stok. Belum ada keputusan soal payment gateway (kandidat: Midtrans/Xendit untuk pasar Indonesia).
 
-## Auth & Keamanan (✅ diimplementasikan, lihat `backend/README.md`)
+## Auth & Keamanan (✅ diimplementasikan, lihat `auth-service/README.md`)
 
 Login Google OAuth only (PKCE + CSRF state), session JWT di cookie httpOnly + `Secure`, dibackup tabel `sessions` di DB supaya bisa di-revoke (logout/ban beneran mencabut akses, bukan cuma hapus cookie). Event login/logout tercatat di `audit_logs`.
 

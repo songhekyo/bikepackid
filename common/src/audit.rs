@@ -7,7 +7,7 @@ use uuid::Uuid;
 /// request it's describing, so callers log-and-ignore the error.
 ///
 /// Shared across services in this monorepo that write to the same
-/// `audit_logs` table (backend/user-service and journey-service) — not
+/// `audit_logs` table (auth-service and journey-service) — not
 /// business logic specific to either one, so it lives here alongside
 /// error/jwt/telemetry rather than being duplicated per service.
 pub async fn log(
