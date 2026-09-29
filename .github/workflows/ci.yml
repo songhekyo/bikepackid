@@ -46,13 +46,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          # "." (repo root), not "backend" — Cargo.toml at the repo root
-          # makes it the actual workspace root (backend, common and
-          # journey-service members) since the monorepo restructuring.
+          # "." (repo root), not "auth-service" — Cargo.toml at the repo
+          # root makes it the actual workspace root (auth-service, common
+          # and journey-service members) since the monorepo restructuring.
           workspaces: .
 
       - name: Apply migrations
-        run: for f in backend/migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done
+        run: for f in auth-service/migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done
 
       - name: cargo test
         run: cargo test --workspace
@@ -71,7 +71,11 @@ jobs:
   # deployment target. Native runner (not QEMU) since emulated Rust
   # compilation is dramatically slower — compilers are syscall/thread-heavy,
   # the worst case for emulation overhead.
-  build-and-push:
+  # Renamed from `build-and-push` (and the crate/directory from `backend`)
+  # once it was no longer "the" backend, just the auth/user/session
+  # service — see auth-service/DEPLOY_AWS.md for the server-side image
+  # rename this required.
+  build-and-push-auth-service:
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-24.04-arm
@@ -91,22 +95,22 @@ jobs:
 
       - uses: docker/build-push-action@v6
         with:
-          # Repo root, not backend/ — the Dockerfile now needs to see the
-          # sibling `common` crate too (backend depends on it via a path
-          # dependency since the monorepo restructuring).
+          # Repo root, not auth-service/ — the Dockerfile now needs to see
+          # the sibling `common` crate too (auth-service depends on it via
+          # a path dependency since the monorepo restructuring).
           context: .
-          file: backend/Dockerfile
+          file: auth-service/Dockerfile
           push: true
           build-args: |
             GIT_SHA=${{ github.sha }}
           tags: |
-            ghcr.io/songhekyo/bikepackid-backend:latest
-            ghcr.io/songhekyo/bikepackid-backend:sha-${{ github.sha }}
+            ghcr.io/songhekyo/bikepackid-auth-service:latest
+            ghcr.io/songhekyo/bikepackid-auth-service:sha-${{ github.sha }}
 
-  # Builds and publishes the journey-service image alongside backend's.
-  # Publishing here only makes the image pullable — nothing deploys it:
-  # docker-compose.yml/nginx/the EC2 instance are untouched by this repo
-  # until a deliberate follow-up wires it in.
+  # Builds and publishes the journey-service image alongside
+  # auth-service's. Publishing here only makes the image pullable —
+  # nothing deploys it: docker-compose.yml/nginx/the EC2 instance are
+  # untouched by this repo until a deliberate follow-up wires it in.
   build-and-push-journey-service:
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'

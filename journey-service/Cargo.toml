@@ -3,10 +3,10 @@ name = "bikepackid_journey_service"
 version = "0.1.0"
 edition = "2021"
 
-# Second deployable service in this monorepo, split out of `backend`
+# Second deployable service in this monorepo, split out of `auth-service`
 # (Journey/Checkpoint/Post) — see docs/AWS_MIGRATION.md Fase 2. Shares the
-# same Postgres database as `backend` (schema/migrations still owned by
-# `backend`) but is its own process/container with its own session-auth
+# same Postgres database as `auth-service` (schema/migrations still owned
+# by `auth-service`) but is its own process/container with its own session-auth
 # check — see src/auth.rs for why that's duplicated rather than shared.
 [dependencies]
 bikepackid_common = { path = "../common" }

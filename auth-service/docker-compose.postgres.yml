@@ -14,10 +14,14 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     # Not exposed to the host/internet, same isolation as `alloy` below —
-    # only `backend` can reach it, over the Docker-internal network by
-    # service name (`postgres`).
+    # only `auth-service`/`journey-service` can reach it, over the
+    # Docker-internal network by service name (`postgres`).
 
-  backend:
+  auth-service:
+    depends_on:
+      - postgres
+
+  journey-service:
     depends_on:
       - postgres
 

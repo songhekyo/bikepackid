@@ -9,11 +9,11 @@ use crate::state::SharedState;
 pub const SESSION_COOKIE: &str = "session";
 
 /// Loads the user for a session in one round trip — deliberately duplicated
-/// from `backend`'s `auth::session::authenticate` rather than shared,
+/// from `auth-service`'s `auth::session::authenticate` rather than shared,
 /// since this is the actual service boundary: journey-service checks a
 /// session's validity against the same `sessions`/`users` tables directly
 /// (both services share one Postgres in this phase) instead of calling
-/// back to `backend` over the network for every request. If/when the
+/// back to `auth-service` over the network for every request. If/when the
 /// services get their own databases, this is the function that would
 /// change into a network call.
 async fn authenticate(pool: &PgPool, session_id: Uuid, user_id: Uuid) -> Result<Option<User>, AppError> {

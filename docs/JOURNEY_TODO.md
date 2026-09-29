@@ -65,13 +65,13 @@ Daftar gear (sepeda, kamera, helm, tenda, dll), informational, seam murah ke com
 - [ ] `0010_create_journey_equipment.sql` — `category_id` FK, `name`, `brand` nullable, `product_url` nullable, `notes` nullable, status enum (`published`/`flagged`/`removed`)
 
 ### Kode Rust
-- [ ] Struct `Equipment`/`EquipmentCategory` (di `src/journey/mod.rs` atau file baru `src/journey/equipment.rs`)
+- [ ] Struct `Equipment`/`EquipmentCategory` (di `journey-service/src/journey/mod.rs` atau file baru `journey-service/src/journey/equipment.rs`)
 - [ ] Service function: `create_equipment`, `list_equipment`, `list_equipment_categories`
 - [ ] Route: `GET/POST /journeys/:id/equipment` — permission sama kayak checkpoint/post (cuma owner journey)
 
 ### Test & docs
 - [ ] Unit + router test (pola sama kayak Task 1)
-- [ ] `backend/README.md` update
+- [ ] `journey-service` docs update (belum ada README tersendiri — lihat auth-service/README.md "Struktur" buat contoh formatnya)
 - [ ] Commit, push, PR
 
 ## Task 3 — Journey Sponsors (nunggu Task 1, paralel sama Task 2)
@@ -82,13 +82,13 @@ Daftar sponsor yang udah deal (di luar platform), ditampilin di halaman journey.
 - [ ] `0011_create_journey_sponsors.sql` — `name`, `logo_url` nullable, `website_url` nullable, `notes` nullable, status enum
 
 ### Kode Rust
-- [ ] Struct `Sponsor` (`src/journey/mod.rs` atau `src/journey/sponsor.rs`)
+- [ ] Struct `Sponsor` (`journey-service/src/journey/mod.rs` atau `journey-service/src/journey/sponsor.rs`)
 - [ ] Service function: `create_sponsor`, `list_sponsors`
 - [ ] Route: `GET/POST /journeys/:id/sponsors` — permission sama kayak equipment
 
 ### Test & docs
 - [ ] Unit + router test
-- [ ] `backend/README.md` update
+- [ ] `journey-service` docs update (belum ada README tersendiri — lihat auth-service/README.md "Struktur" buat contoh formatnya)
 - [ ] Commit, push, PR
 
 ## Task 4 — Fitur konektivitas ala-telco (nunggu App mobile ada, belum di-desain detail)

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["backend", "common", "journey-service"]
+members = ["auth-service", "common", "journey-service"]
 
 # Moved from backend/Cargo.toml — Cargo requires profile settings to live in
 # the workspace root once there's more than one member, not per-crate.

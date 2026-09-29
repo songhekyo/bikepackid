@@ -116,9 +116,9 @@ pub async fn app_state() -> crate::state::SharedState {
 }
 
 /// Issues a session cookie the way a real login would, without going
-/// through `backend`'s login endpoint (this service has no login flow of
+/// through `auth-service`'s login endpoint (this service has no login flow of
 /// its own). Inserts a `sessions` row directly — deliberately duplicating
-/// backend's session-creation SQL rather than sharing it, same rationale
+/// auth-service's session-creation SQL rather than sharing it, same rationale
 /// as `auth::authenticate` (see the comment there): this service only
 /// ever reads sessions, but a test still needs one to exist to read.
 pub async fn cookie_for(state: &crate::state::SharedState, user_id: Uuid, role: Role) -> String {

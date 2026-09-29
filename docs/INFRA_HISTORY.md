@@ -1,6 +1,6 @@
 # Riwayat infra — dari kosong sampai live
 
-Catatan kronologis kenapa infra `bikepackid` bentuknya kayak sekarang. Bukan panduan langkah-demi-langkah (itu di [`backend/DEPLOY.md`](../backend/DEPLOY.md)) — ini dokumentasi **keputusan dan perubahan**, termasuk yang rencana awalnya beda dari yang akhirnya kepake, dan kenapa.
+Catatan kronologis kenapa infra `bikepackid` bentuknya kayak sekarang. Bukan panduan langkah-demi-langkah (itu di [`auth-service/DEPLOY.md`](../auth-service/DEPLOY.md), historis, atau [`auth-service/DEPLOY_AWS.md`](../auth-service/DEPLOY_AWS.md), aktif — `auth-service/` dulu namanya `backend/`) — ini dokumentasi **keputusan dan perubahan**, termasuk yang rencana awalnya beda dari yang akhirnya kepake, dan kenapa.
 
 Periode: 14–20 September 2026. Live pertama kali di `https://bikepacking.cyou`, 19 September 2026 (login Google end-to-end terkonfirmasi jalan lewat log).
 

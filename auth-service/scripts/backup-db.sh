@@ -2,7 +2,7 @@
 # Dumps the self-hosted Postgres database, uploads it to a private R2
 # bucket (separate from the public bikepackid-media bucket), and prunes
 # backups older than $RETENTION_DAYS. Meant to run daily via cron on the
-# EC2 instance — see backend/DEPLOY_AWS.md "Backup database" for setup.
+# EC2 instance — see auth-service/DEPLOY_AWS.md "Backup database" for setup.
 #
 # Only relevant for the self-hosted Postgres deploy (docker-compose.postgres.yml).
 # Not needed if DATABASE_URL still points at a managed provider (Supabase/RDS/etc)

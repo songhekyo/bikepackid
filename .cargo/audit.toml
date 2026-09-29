@@ -7,9 +7,10 @@ ignore = [
     # feature, which no workspace member ever enables (every crate builds
     # sqlx with `default-features = false` and only the "postgres"
     # feature). Verified 2026-09-13 with `cargo build -v` that neither
-    # `rsa` nor `sqlx-mysql` are actually compiled into backend's binary;
-    # the same applies to journey-service, added 2026-09-29 with the same
-    # sqlx feature set. No fixed version exists upstream yet — re-run
+    # `rsa` nor `sqlx-mysql` are actually compiled into auth-service's
+    # binary (then still named `backend`); the same applies to
+    # journey-service, added 2026-09-29 with the same sqlx feature set.
+    # No fixed version exists upstream yet — re-run
     # `cargo audit` after bumping sqlx to catch a fix if one ships.
     "RUSTSEC-2023-0071",
 ]

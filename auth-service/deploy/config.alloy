@@ -1,7 +1,8 @@
-// Receives OTLP (traces/metrics/logs) from the backend on the Docker
-// network and forwards it to Grafana Cloud over OTLP/HTTP with basic auth.
-// The backend never sees the Grafana Cloud credentials — it only ever
-// talks to this local collector (see telemetry.rs / OTEL_EXPORTER_OTLP_ENDPOINT).
+// Receives OTLP (traces/metrics/logs) from auth-service and journey-service
+// on the Docker network and forwards it to Grafana Cloud over OTLP/HTTP with
+// basic auth. Neither service ever sees the Grafana Cloud credentials —
+// they only ever talk to this local collector (see
+// common/src/telemetry.rs / OTEL_EXPORTER_OTLP_ENDPOINT).
 
 otelcol.receiver.otlp "default" {
 	grpc {

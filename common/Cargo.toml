@@ -3,7 +3,7 @@ name = "bikepackid_common"
 version = "0.1.0"
 edition = "2021"
 
-# Shared across services in this monorepo (backend/user-service and
+# Shared across services in this monorepo (auth-service and
 # journey-service): User/Role types, AppError + its HTTP mapping, the
 # audit-log writer, JWT issue/verify, and telemetry setup — the
 # infrastructure pieces both services need to behave identically, not
