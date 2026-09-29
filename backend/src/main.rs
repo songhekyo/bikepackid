@@ -1,14 +1,16 @@
-mod audit;
 mod auth;
 mod config;
-mod error;
-mod journey;
 mod models;
 mod routes;
 mod state;
 #[cfg(test)]
 mod test_support;
-mod telemetry;
+
+// `error`/`audit` moved to `bikepackid_common` (shared with journey-service).
+// Re-exported here so existing `crate::error`/`crate::audit` call sites in
+// this crate don't need to change.
+pub use bikepackid_common::audit;
+pub use bikepackid_common::error;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -30,7 +32,7 @@ const SESSION_PURGE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
-    let telemetry = telemetry::init("bikepackid_backend");
+    let telemetry = bikepackid_common::telemetry::init("bikepackid_backend");
 
     let config = Config::from_env();
 
@@ -73,16 +75,12 @@ async fn main() {
 
     let port = config.port;
 
-    let r2 = journey::storage::R2::from_config(&config);
-
     let state = Arc::new(AppState {
         db: db.clone(),
         config,
         oauth_client,
         http_client,
         pending_logins: Mutex::new(std::collections::HashMap::new()),
-        r2,
-        journeys_cache: journey::new_journey_list_cache(),
     });
 
     spawn_session_purge_task(db);

@@ -1,0 +1,25 @@
+[package]
+name = "bikepackid_common"
+version = "0.1.0"
+edition = "2021"
+
+# Shared across services in this monorepo (backend/user-service and
+# journey-service): User/Role types, AppError + its HTTP mapping, the
+# audit-log writer, JWT issue/verify, and telemetry setup — the
+# infrastructure pieces both services need to behave identically, not
+# business logic specific to either one.
+[dependencies]
+axum = { version = "0.7", features = ["macros"] }
+chrono = { version = "0.4", features = ["serde"] }
+jsonwebtoken = "9"
+opentelemetry = "0.32.0"
+opentelemetry_sdk = { version = "0.32.1", features = ["rt-tokio", "experimental_trace_batch_span_processor_with_async_runtime"] }
+opentelemetry-otlp = { version = "0.32.0", default-features = false, features = ["http-proto", "reqwest-client", "trace"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-native-tls", "postgres", "uuid", "chrono", "derive", "macros"] }
+thiserror = "1"
+tracing = "0.1"
+tracing-opentelemetry = "0.33.0"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1", features = ["v4", "serde"] }
