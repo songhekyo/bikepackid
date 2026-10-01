@@ -97,6 +97,32 @@ pub async fn insert_checkpoint(pool: &PgPool, journey_id: Uuid) -> Uuid {
     .expect("failed to insert test checkpoint")
 }
 
+/// Generates its own unique name so parallel tests never collide on
+/// `equipment_categories.name`'s UNIQUE constraint.
+pub async fn insert_equipment_category(pool: &PgPool) -> Uuid {
+    sqlx::query_scalar("INSERT INTO equipment_categories (name) VALUES ($1) RETURNING id")
+        .bind(format!("Test category {}", Uuid::new_v4()))
+        .fetch_one(pool)
+        .await
+        .expect("failed to insert test equipment category")
+}
+
+pub async fn insert_equipment(pool: &PgPool, journey_id: Uuid, category_id: Uuid) -> Uuid {
+    sqlx::query_scalar(
+        r#"
+        INSERT INTO journey_equipment (journey_id, category_id, name)
+        VALUES ($1, $2, $3)
+        RETURNING id
+        "#,
+    )
+    .bind(journey_id)
+    .bind(category_id)
+    .bind(format!("Test equipment {}", Uuid::new_v4()))
+    .fetch_one(pool)
+    .await
+    .expect("failed to insert test equipment")
+}
+
 /// Builds a real `AppState` (real DB pool, real config from `.env`) for
 /// tests that drive the app through its router rather than calling
 /// individual functions directly.

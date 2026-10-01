@@ -3,8 +3,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::{
-    Checkpoint, CreateCheckpointRequest, CreateJourneyRequest, CreatePostRequest, Journey,
-    JourneyStatus, Post, UpdateJourneyRequest,
+    Checkpoint, CreateCheckpointRequest, CreateEquipmentRequest, CreateJourneyRequest,
+    CreatePostRequest, Equipment, EquipmentCategory, Journey, JourneyStatus, Post,
+    UpdateJourneyRequest,
 };
 
 /// The one place "can this user edit this journey" is decided — every
@@ -21,6 +22,24 @@ async fn fetch_journey(pool: &PgPool, journey_id: Uuid) -> Result<Option<Journey
         .bind(journey_id)
         .fetch_optional(pool)
         .await?;
+
+    Ok(journey)
+}
+
+/// The shared `NotFound`/`Forbidden` gate every write path needs before
+/// touching a journey or its children (checkpoints, posts, equipment) —
+/// factored out so the four call sites can't silently diverge in their
+/// authorization behavior if the rule ever changes.
+async fn fetch_editable_journey(
+    pool: &PgPool,
+    journey_id: Uuid,
+    user: &User,
+) -> Result<Journey, AppError> {
+    let journey = fetch_journey(pool, journey_id).await?.ok_or(AppError::NotFound)?;
+
+    if !user_can_edit_journey(&journey, user) {
+        return Err(AppError::Forbidden);
+    }
 
     Ok(journey)
 }
@@ -43,6 +62,21 @@ async fn fetch_post(pool: &PgPool, post_id: Uuid) -> Result<Option<Post>, AppErr
         .await?;
 
     Ok(post)
+}
+
+#[tracing::instrument(skip(pool))]
+async fn fetch_equipment_category(
+    pool: &PgPool,
+    category_id: Uuid,
+) -> Result<Option<EquipmentCategory>, AppError> {
+    let category = sqlx::query_as::<_, EquipmentCategory>(
+        "SELECT * FROM equipment_categories WHERE id = $1",
+    )
+    .bind(category_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(category)
 }
 
 #[tracing::instrument(skip(pool, req))]
@@ -149,11 +183,7 @@ pub async fn update_journey(
     user: &User,
     req: UpdateJourneyRequest,
 ) -> Result<Journey, AppError> {
-    let journey = fetch_journey(pool, journey_id).await?.ok_or(AppError::NotFound)?;
-
-    if !user_can_edit_journey(&journey, user) {
-        return Err(AppError::Forbidden);
-    }
+    fetch_editable_journey(pool, journey_id, user).await?;
 
     let updated = sqlx::query_as::<_, Journey>(
         r#"
@@ -201,11 +231,7 @@ pub async fn create_checkpoint(
     user: &User,
     req: CreateCheckpointRequest,
 ) -> Result<Checkpoint, AppError> {
-    let journey = fetch_journey(pool, journey_id).await?.ok_or(AppError::NotFound)?;
-
-    if !user_can_edit_journey(&journey, user) {
-        return Err(AppError::Forbidden);
-    }
+    fetch_editable_journey(pool, journey_id, user).await?;
 
     let trigger_type = req.trigger_type.unwrap_or_else(|| "manual".to_string());
 
@@ -270,11 +296,7 @@ pub async fn create_post(
     req: CreatePostRequest,
 ) -> Result<Post, AppError> {
     let checkpoint = fetch_checkpoint(pool, checkpoint_id).await?.ok_or(AppError::NotFound)?;
-    let journey = fetch_journey(pool, checkpoint.journey_id).await?.ok_or(AppError::NotFound)?;
-
-    if !user_can_edit_journey(&journey, user) {
-        return Err(AppError::Forbidden);
-    }
+    fetch_editable_journey(pool, checkpoint.journey_id, user).await?;
 
     if let Some(parent_id) = req.parent_post_id {
         let parent = fetch_post(pool, parent_id).await?.ok_or_else(|| {
@@ -329,6 +351,75 @@ pub async fn list_posts(
     };
 
     Ok(posts)
+}
+
+#[tracing::instrument(skip(pool, user, req), fields(user_id = %user.id))]
+pub async fn create_equipment(
+    pool: &PgPool,
+    journey_id: Uuid,
+    user: &User,
+    req: CreateEquipmentRequest,
+) -> Result<Equipment, AppError> {
+    fetch_editable_journey(pool, journey_id, user).await?;
+
+    fetch_equipment_category(pool, req.category_id).await?.ok_or_else(|| {
+        AppError::BadRequest("category_id must reference an existing equipment category".to_string())
+    })?;
+
+    let equipment = sqlx::query_as::<_, Equipment>(
+        r#"
+        INSERT INTO journey_equipment (journey_id, category_id, name, brand, product_url, notes)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *
+        "#,
+    )
+    .bind(journey_id)
+    .bind(req.category_id)
+    .bind(req.name)
+    .bind(req.brand)
+    .bind(req.product_url)
+    .bind(req.notes)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(equipment)
+}
+
+#[tracing::instrument(skip(pool, viewer))]
+pub async fn list_equipment(
+    pool: &PgPool,
+    journey_id: Uuid,
+    viewer: Option<&User>,
+) -> Result<Vec<Equipment>, AppError> {
+    let journey = get_journey(pool, journey_id, viewer).await?;
+
+    let equipment = if viewer.is_some_and(|u| user_can_edit_journey(&journey, u)) {
+        sqlx::query_as::<_, Equipment>(
+            "SELECT * FROM journey_equipment WHERE journey_id = $1 ORDER BY created_at",
+        )
+        .bind(journey_id)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, Equipment>(
+            "SELECT * FROM visible_equipment WHERE journey_id = $1 ORDER BY created_at",
+        )
+        .bind(journey_id)
+        .fetch_all(pool)
+        .await?
+    };
+
+    Ok(equipment)
+}
+
+#[tracing::instrument(skip(pool))]
+pub async fn list_equipment_categories(pool: &PgPool) -> Result<Vec<EquipmentCategory>, AppError> {
+    let categories =
+        sqlx::query_as::<_, EquipmentCategory>("SELECT * FROM equipment_categories ORDER BY name")
+            .fetch_all(pool)
+            .await?;
+
+    Ok(categories)
 }
 
 #[cfg(test)]
@@ -633,5 +724,111 @@ mod tests {
         assert!(matches!(result, Err(AppError::BadRequest(_))), "expected BadRequest, got {result:?}");
 
         test_support::delete_user(&pool, user_id).await;
+    }
+
+    fn equipment_request(category_id: Uuid, name: &str) -> CreateEquipmentRequest {
+        CreateEquipmentRequest {
+            category_id,
+            name: name.to_string(),
+            brand: None,
+            product_url: None,
+            notes: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn create_and_list_equipment_roundtrip() {
+        let pool = test_support::pool().await;
+        let user_id = test_support::insert_user(&pool).await;
+        let user = test_support::fetch_user(&pool, user_id).await;
+        let category_id = test_support::insert_equipment_category(&pool).await;
+
+        let journey = create_journey(&pool, user_id, journey_request("Gear test")).await.unwrap();
+        let created = create_equipment(&pool, journey.id, &user, equipment_request(category_id, "Tenda MSR")).await.unwrap();
+        assert_eq!(created.name, "Tenda MSR");
+
+        let listed = list_equipment(&pool, journey.id, Some(&user)).await.unwrap();
+        assert!(listed.iter().any(|e| e.id == created.id));
+
+        test_support::delete_user(&pool, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn create_equipment_rejects_non_owner_non_moderator() {
+        let pool = test_support::pool().await;
+        let owner_id = test_support::insert_user(&pool).await;
+        let other_id = test_support::insert_user_with_role(&pool, Role::Creator).await;
+        let other = test_support::fetch_user(&pool, other_id).await;
+        let category_id = test_support::insert_equipment_category(&pool).await;
+
+        let journey = create_journey(&pool, owner_id, journey_request("Owned")).await.unwrap();
+
+        let result = create_equipment(&pool, journey.id, &other, equipment_request(category_id, "Sepeda")).await;
+
+        assert!(matches!(result, Err(AppError::Forbidden)));
+
+        test_support::delete_user(&pool, owner_id).await;
+        test_support::delete_user(&pool, other_id).await;
+    }
+
+    #[tokio::test]
+    async fn create_equipment_allows_moderator_even_when_not_owner() {
+        let pool = test_support::pool().await;
+        let owner_id = test_support::insert_user(&pool).await;
+        let moderator_id = test_support::insert_user_with_role(&pool, Role::Moderator).await;
+        let moderator = test_support::fetch_user(&pool, moderator_id).await;
+        let category_id = test_support::insert_equipment_category(&pool).await;
+
+        let journey = create_journey(&pool, owner_id, journey_request("Owned")).await.unwrap();
+
+        let created = create_equipment(&pool, journey.id, &moderator, equipment_request(category_id, "Kamera")).await.unwrap();
+        assert_eq!(created.journey_id, journey.id);
+
+        test_support::delete_user(&pool, owner_id).await;
+        test_support::delete_user(&pool, moderator_id).await;
+    }
+
+    #[tokio::test]
+    async fn create_equipment_rejects_an_unknown_category() {
+        let pool = test_support::pool().await;
+        let user_id = test_support::insert_user(&pool).await;
+        let user = test_support::fetch_user(&pool, user_id).await;
+
+        let journey = create_journey(&pool, user_id, journey_request("Bad category")).await.unwrap();
+
+        let result = create_equipment(&pool, journey.id, &user, equipment_request(Uuid::new_v4(), "Helm")).await;
+
+        assert!(matches!(result, Err(AppError::BadRequest(_))), "expected BadRequest, got {result:?}");
+
+        test_support::delete_user(&pool, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn published_equipment_under_draft_journey_is_not_publicly_visible() {
+        let pool = test_support::pool().await;
+        let user_id = test_support::insert_user(&pool).await;
+        let user = test_support::fetch_user(&pool, user_id).await;
+        let category_id = test_support::insert_equipment_category(&pool).await;
+
+        let journey = create_journey(&pool, user_id, journey_request("Draft with equipment")).await.unwrap();
+        let equipment = create_equipment(&pool, journey.id, &user, equipment_request(category_id, "Tas")).await.unwrap();
+        assert_eq!(equipment.journey_id, journey.id);
+
+        let public_result = list_equipment(&pool, journey.id, None).await;
+        assert!(matches!(public_result, Err(AppError::NotFound)));
+
+        let owner_result = list_equipment(&pool, journey.id, Some(&user)).await.unwrap();
+        assert_eq!(owner_result.len(), 1);
+
+        test_support::delete_user(&pool, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn list_equipment_categories_includes_seeded_categories() {
+        let pool = test_support::pool().await;
+
+        let categories = list_equipment_categories(&pool).await.unwrap();
+
+        assert!(categories.iter().any(|c| c.name == "Sepeda"), "expected seeded category 'Sepeda', got {categories:?}");
     }
 }
