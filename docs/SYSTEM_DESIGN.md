@@ -2,7 +2,7 @@
 
 Portal media + marketplace untuk komunitas bikepacker Indonesia. Dokumen ini merangkum keputusan desain sistem yang sudah diambil, supaya tidak hilang di percakapan dan bisa jadi acuan pengembangan lanjutan.
 
-Status implementasi saat ini: **sistem User** (login Google OAuth + role) dan **Journey/Checkpoint/Post inti** (termasuk upload foto ke R2) **sudah dibangun**, di dua service terpisah dalam monorepo Rust/Axum/Postgres yang sama: `auth-service/` (User, dulu namanya `backend/`) dan `journey-service/` (Journey/Checkpoint/Post — diekstrak keluar dari `auth-service` belakangan, lihat `docs/AWS_MIGRATION.md` Fase 2). Entity lain di bawah ini (TrackSegment, Journey Equipment, Journey Sponsors, Report, Marketplace) **belum diimplementasikan** — statusnya rencana/desain.
+Status implementasi saat ini: **sistem User** (login Google OAuth + role), **Journey/Checkpoint/Post inti** (termasuk upload foto ke R2), dan **Journey Equipment** **sudah dibangun**, di dua service terpisah dalam monorepo Rust/Axum/Postgres yang sama: `auth-service/` (User, dulu namanya `backend/`) dan `journey-service/` (Journey/Checkpoint/Post/Equipment — diekstrak keluar dari `auth-service` belakangan, lihat `docs/AWS_MIGRATION.md` Fase 2). Entity lain di bawah ini (TrackSegment, Journey Sponsors, Report, Marketplace) **belum diimplementasikan** — statusnya rencana/desain.
 
 ## Roadmap
 
@@ -123,7 +123,7 @@ Kode aplikasi yang butuh checkpoint/post publik query ke view ini, bukan ke tabe
 
 Ketiganya dirancang supaya **aditif** kalau nanti dibangun — gak butuh migrasi yang ngubah/hapus kolom yang udah ada, cuma nambah tabel baru.
 
-### Journey Equipment (didesain di sini, implementasi nyusul PR terpisah)
+### Journey Equipment (sudah diimplementasikan, lihat `journey-service/`)
 
 Bikepacker sering mau nunjukin gear yang dipakai di satu journey — bukan cuma sepeda, tapi juga kamera, helm, tenda, dll. Awalnya dipikir sebagai "bikecheck" (khusus sepeda), tapi digeneralisasi jadi satu konsep equipment/gear yang fleksibel, karena tiap item — apapun kategorinya — bakal jadi titik koneksi yang sama ke commerce nanti (Fase 4): orang liat journey, liat gear apa yang dipakai, klik buat beli barang yang sama.
 

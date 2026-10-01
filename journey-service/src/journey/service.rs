@@ -26,6 +26,24 @@ async fn fetch_journey(pool: &PgPool, journey_id: Uuid) -> Result<Option<Journey
     Ok(journey)
 }
 
+/// The shared `NotFound`/`Forbidden` gate every write path needs before
+/// touching a journey or its children (checkpoints, posts, equipment) —
+/// factored out so the four call sites can't silently diverge in their
+/// authorization behavior if the rule ever changes.
+async fn fetch_editable_journey(
+    pool: &PgPool,
+    journey_id: Uuid,
+    user: &User,
+) -> Result<Journey, AppError> {
+    let journey = fetch_journey(pool, journey_id).await?.ok_or(AppError::NotFound)?;
+
+    if !user_can_edit_journey(&journey, user) {
+        return Err(AppError::Forbidden);
+    }
+
+    Ok(journey)
+}
+
 #[tracing::instrument(skip(pool))]
 async fn fetch_checkpoint(pool: &PgPool, checkpoint_id: Uuid) -> Result<Option<Checkpoint>, AppError> {
     let checkpoint = sqlx::query_as::<_, Checkpoint>("SELECT * FROM checkpoints WHERE id = $1")
@@ -165,11 +183,7 @@ pub async fn update_journey(
     user: &User,
     req: UpdateJourneyRequest,
 ) -> Result<Journey, AppError> {
-    let journey = fetch_journey(pool, journey_id).await?.ok_or(AppError::NotFound)?;
-
-    if !user_can_edit_journey(&journey, user) {
-        return Err(AppError::Forbidden);
-    }
+    fetch_editable_journey(pool, journey_id, user).await?;
 
     let updated = sqlx::query_as::<_, Journey>(
         r#"
@@ -217,11 +231,7 @@ pub async fn create_checkpoint(
     user: &User,
     req: CreateCheckpointRequest,
 ) -> Result<Checkpoint, AppError> {
-    let journey = fetch_journey(pool, journey_id).await?.ok_or(AppError::NotFound)?;
-
-    if !user_can_edit_journey(&journey, user) {
-        return Err(AppError::Forbidden);
-    }
+    fetch_editable_journey(pool, journey_id, user).await?;
 
     let trigger_type = req.trigger_type.unwrap_or_else(|| "manual".to_string());
 
@@ -286,11 +296,7 @@ pub async fn create_post(
     req: CreatePostRequest,
 ) -> Result<Post, AppError> {
     let checkpoint = fetch_checkpoint(pool, checkpoint_id).await?.ok_or(AppError::NotFound)?;
-    let journey = fetch_journey(pool, checkpoint.journey_id).await?.ok_or(AppError::NotFound)?;
-
-    if !user_can_edit_journey(&journey, user) {
-        return Err(AppError::Forbidden);
-    }
+    fetch_editable_journey(pool, checkpoint.journey_id, user).await?;
 
     if let Some(parent_id) = req.parent_post_id {
         let parent = fetch_post(pool, parent_id).await?.ok_or_else(|| {
@@ -354,11 +360,7 @@ pub async fn create_equipment(
     user: &User,
     req: CreateEquipmentRequest,
 ) -> Result<Equipment, AppError> {
-    let journey = fetch_journey(pool, journey_id).await?.ok_or(AppError::NotFound)?;
-
-    if !user_can_edit_journey(&journey, user) {
-        return Err(AppError::Forbidden);
-    }
+    fetch_editable_journey(pool, journey_id, user).await?;
 
     fetch_equipment_category(pool, req.category_id).await?.ok_or_else(|| {
         AppError::BadRequest("category_id must reference an existing equipment category".to_string())
