@@ -61,17 +61,17 @@ Loop inti: create journey → checkpoint → post. Semua yang lain nunggu ini ke
 Daftar gear (sepeda, kamera, helm, tenda, dll), informational, seam murah ke commerce.
 
 ### Migrasi
-- [ ] `0009_create_equipment_categories.sql` — lookup table + seed data awal (Sepeda, Ban, Groupset, Tas, Kamera, Helm, Tenda, Kompor, dst)
-- [ ] `0010_create_journey_equipment.sql` — `category_id` FK, `name`, `brand` nullable, `product_url` nullable, `notes` nullable, status enum (`published`/`flagged`/`removed`)
+- [x] `0009_create_equipment_categories.sql` — lookup table + seed data awal (Sepeda, Ban, Groupset, Tas, Kamera, Helm, Tenda, Kompor)
+- [x] `0010_create_journey_equipment.sql` — `category_id` FK, `name`, `brand` nullable, `product_url` nullable, `notes` nullable, status enum (`published`/`flagged`/`removed`), plus `visible_equipment` view (sama pola kayak `visible_checkpoints`/`visible_posts`)
 
 ### Kode Rust
-- [ ] Struct `Equipment`/`EquipmentCategory` (di `journey-service/src/journey/mod.rs` atau file baru `journey-service/src/journey/equipment.rs`)
-- [ ] Service function: `create_equipment`, `list_equipment`, `list_equipment_categories`
-- [ ] Route: `GET/POST /journeys/:id/equipment` — permission sama kayak checkpoint/post (cuma owner journey)
+- [x] Struct `Equipment`/`EquipmentCategory` (di `journey-service/src/journey/mod.rs`, bareng Checkpoint/Post — gak dipecah ke file sendiri)
+- [x] Service function: `create_equipment`, `list_equipment`, `list_equipment_categories`
+- [x] Route: `GET/POST /journeys/:id/equipment` — permission sama kayak checkpoint/post (owner journey atau moderator+); plus `GET /equipment-categories` (publik, gak di-scope ke journey)
 
 ### Test & docs
-- [ ] Unit + router test (pola sama kayak Task 1)
-- [ ] `journey-service` docs update (belum ada README tersendiri — lihat auth-service/README.md "Struktur" buat contoh formatnya)
+- [x] Unit + router test (pola sama kayak Task 1) — 10 test baru, semua lolos terhadap Postgres asli
+- [x] `journey-service` docs update — `journey-service/README.md` dibikin dari nol (belum pernah ada sebelumnya), isinya semua endpoint yang ada sekarang, bukan cuma equipment
 - [ ] Commit, push, PR
 
 ## Task 3 — Journey Sponsors (nunggu Task 1, paralel sama Task 2)

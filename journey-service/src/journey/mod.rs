@@ -61,6 +61,15 @@ pub enum PostStatus {
     Removed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "equipment_status", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum EquipmentStatus {
+    Published,
+    Flagged,
+    Removed,
+}
+
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct Journey {
     pub id: Uuid,
@@ -103,6 +112,25 @@ pub struct Post {
     pub media_url: Option<String>,
     pub parent_post_id: Option<Uuid>,
     pub status: PostStatus,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct EquipmentCategory {
+    pub id: Uuid,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct Equipment {
+    pub id: Uuid,
+    pub journey_id: Uuid,
+    pub category_id: Uuid,
+    pub name: String,
+    pub brand: Option<String>,
+    pub product_url: Option<String>,
+    pub notes: Option<String>,
+    pub status: EquipmentStatus,
     pub created_at: DateTime<Utc>,
 }
 
@@ -156,4 +184,13 @@ pub struct CreatePostRequest {
     pub body: Option<String>,
     pub media_url: Option<String>,
     pub parent_post_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateEquipmentRequest {
+    pub category_id: Uuid,
+    pub name: String,
+    pub brand: Option<String>,
+    pub product_url: Option<String>,
+    pub notes: Option<String>,
 }

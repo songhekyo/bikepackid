@@ -13,8 +13,8 @@ use uuid::Uuid;
 use crate::{
     auth::{AuthUser, OptionalAuthUser},
     journey::{
-        self, Checkpoint, CreateCheckpointRequest, CreateJourneyRequest, CreatePostRequest,
-        Journey, Post, UpdateJourneyRequest,
+        self, Checkpoint, CreateCheckpointRequest, CreateEquipmentRequest, CreateJourneyRequest,
+        CreatePostRequest, Equipment, EquipmentCategory, Journey, Post, UpdateJourneyRequest,
     },
     state::SharedState,
 };
@@ -31,6 +31,11 @@ pub fn router() -> Router<SharedState> {
             get(list_checkpoints).post(create_checkpoint),
         )
         .route("/checkpoints/:id/posts", get(list_posts).post(create_post))
+        .route(
+            "/journeys/:id/equipment",
+            get(list_equipment).post(create_equipment),
+        )
+        .route("/equipment-categories", get(list_equipment_categories))
         .route("/uploads/presign-url", post(presign_upload))
 }
 
@@ -253,6 +258,53 @@ async fn create_post(
     }
 
     Ok((StatusCode::CREATED, Json(post)))
+}
+
+/// GET /journeys/:id/equipment — same visibility rule as checkpoints: the
+/// owner/moderator sees every item, everyone else only published items on
+/// a non-draft journey.
+async fn list_equipment(
+    State(state): State<SharedState>,
+    OptionalAuthUser(viewer): OptionalAuthUser,
+    Path(journey_id): Path<Uuid>,
+) -> Result<Json<Vec<Equipment>>, AppError> {
+    let equipment = journey::service::list_equipment(&state.db, journey_id, viewer.as_ref()).await?;
+    Ok(Json(equipment))
+}
+
+async fn create_equipment(
+    State(state): State<SharedState>,
+    AuthUser(user): AuthUser,
+    Path(journey_id): Path<Uuid>,
+    Json(req): Json<CreateEquipmentRequest>,
+) -> Result<(StatusCode, Json<Equipment>), AppError> {
+    if !user.role.can_use_app() {
+        return Err(AppError::Forbidden);
+    }
+
+    let equipment = journey::service::create_equipment(&state.db, journey_id, &user, req).await?;
+
+    if let Err(err) = audit::log(
+        &state.db,
+        Some(user.id),
+        "equipment_created",
+        Some(json!({ "equipment_id": equipment.id, "journey_id": journey_id })),
+    )
+    .await
+    {
+        tracing::error!(?err, "failed to write equipment_created audit log");
+    }
+
+    Ok((StatusCode::CREATED, Json(equipment)))
+}
+
+/// GET /equipment-categories — public reference data, not journey-scoped,
+/// no auth required.
+async fn list_equipment_categories(
+    State(state): State<SharedState>,
+) -> Result<Json<Vec<EquipmentCategory>>, AppError> {
+    let categories = journey::service::list_equipment_categories(&state.db).await?;
+    Ok(Json(categories))
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -566,6 +618,123 @@ mod tests {
         assert_eq!(checkpoints.len(), 1);
 
         test_support::delete_user(&state.db, owner_id).await;
+    }
+
+    fn equipment_create_body(category_id: Uuid, name: &str) -> Body {
+        Body::from(
+            serde_json::to_vec(&serde_json::json!({ "category_id": category_id, "name": name }))
+                .unwrap(),
+        )
+    }
+
+    #[tokio::test]
+    async fn create_equipment_is_forbidden_for_viewers() {
+        let state = test_support::app_state().await;
+        let owner_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+        let viewer_id = test_support::insert_user(&state.db).await; // defaults to viewer
+        let viewer_cookie = test_support::cookie_for(&state, viewer_id, Role::Viewer).await;
+        let category_id = test_support::insert_equipment_category(&state.db).await;
+
+        let journey_id = test_support::insert_journey(&state.db, owner_id, "published").await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/journeys/{journey_id}/equipment"))
+                    .header("cookie", viewer_cookie)
+                    .header("content-type", "application/json")
+                    .body(equipment_create_body(category_id, "Tenda"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        test_support::delete_user(&state.db, owner_id).await;
+        test_support::delete_user(&state.db, viewer_id).await;
+    }
+
+    #[tokio::test]
+    async fn create_equipment_is_ok_for_creators() {
+        let state = test_support::app_state().await;
+        let owner_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+        let owner_cookie = test_support::cookie_for(&state, owner_id, Role::Creator).await;
+        let category_id = test_support::insert_equipment_category(&state.db).await;
+
+        let journey_id = test_support::insert_journey(&state.db, owner_id, "published").await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/journeys/{journey_id}/equipment"))
+                    .header("cookie", owner_cookie)
+                    .header("content-type", "application/json")
+                    .body(equipment_create_body(category_id, "Tenda MSR"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["name"], "Tenda MSR");
+
+        test_support::delete_user(&state.db, owner_id).await;
+    }
+
+    #[tokio::test]
+    async fn list_equipment_is_public_for_a_published_journey() {
+        let state = test_support::app_state().await;
+        let owner_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+        let category_id = test_support::insert_equipment_category(&state.db).await;
+
+        let journey_id = test_support::insert_journey(&state.db, owner_id, "published").await;
+        test_support::insert_equipment(&state.db, journey_id, category_id).await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/journeys/{journey_id}/equipment"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let equipment: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(equipment.len(), 1);
+
+        test_support::delete_user(&state.db, owner_id).await;
+    }
+
+    #[tokio::test]
+    async fn list_equipment_categories_is_public_and_unauthenticated() {
+        let state = test_support::app_state().await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/equipment-categories")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let categories: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+        assert!(!categories.is_empty());
     }
 
     #[tokio::test]
