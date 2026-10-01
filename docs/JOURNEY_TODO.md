@@ -72,7 +72,7 @@ Daftar gear (sepeda, kamera, helm, tenda, dll), informational, seam murah ke com
 ### Test & docs
 - [x] Unit + router test (pola sama kayak Task 1) — 10 test baru, semua lolos terhadap Postgres asli
 - [x] `journey-service` docs update — `journey-service/README.md` dibikin dari nol (belum pernah ada sebelumnya), isinya semua endpoint yang ada sekarang, bukan cuma equipment
-- [ ] Commit, push, PR
+- [x] Commit, push, PR
 
 ## Task 3 — Journey Sponsors (nunggu Task 1, paralel sama Task 2)
 
