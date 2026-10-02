@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bikepacking.id — Gowes jauh, cerita panjang</title>
+<meta name="description" content="Aplikasi jurnal untuk bikepacker Indonesia. Post jurnal, check-point tanpa sinyal, dan story perjalanan. Segera hadir di iOS.">
+<link rel="icon" href="frog.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Londrina+Solid:wght@400;900&family=Barlow:wght@400;500;700;800&display=swap">
+<style>
+:root{
+  --bg:#DFD4BE; --bg-input:#EAE2D1; --ink:#2B2824; --text-2:#3A362F; --muted:#6E6759;
+  --accent:#A86B0A;
+  --font-display:'Londrina Solid',sans-serif; --font-body:'Barlow',sans-serif;
+  --max:1120px; --seats-total:20;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body)}
+a{color:var(--ink)} a:hover{color:#000}
+.page{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:0 1.25rem}
+.wrap{width:100%;max-width:var(--max)}
+.display{font-family:var(--font-display);font-weight:900;text-transform:uppercase}
+.label{font-size:.8rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+.rule{border-top:2px solid var(--ink)}
+
+.site-header{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:2rem 0}
+.logo{font-size:1.75rem;color:var(--accent);letter-spacing:.02em;text-decoration:none}
+.logo span{color:var(--ink)}
+.site-nav{display:flex;gap:1.75rem}
+.site-nav a{text-decoration:none}
+.site-nav a.is-cta{border-bottom:2px solid var(--ink);padding-bottom:2px}
+
+.hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:3rem;align-items:center;padding:3rem 0 4rem}
+.hero-art{display:flex;justify-content:center}
+.hero-frog{width:100%;max-width:440px;height:auto}
+.hero-copy{display:flex;flex-direction:column;gap:1.5rem}
+.wordmark{display:flex;flex-direction:column;color:var(--accent);line-height:.88}
+.wordmark .w-bike{font-size:clamp(2.25rem,4vw,3.5rem);letter-spacing:.04em}
+.wordmark .w-packing{font-size:clamp(4.5rem,9vw,8rem);letter-spacing:.01em}
+.wordmark .w-id{margin-top:.5rem;font-family:var(--font-body);font-size:1rem;font-weight:800;letter-spacing:.24em;color:var(--ink)}
+.wordmark .w-tagline{margin-top:1rem;font-size:clamp(1.75rem,3vw,2.5rem);letter-spacing:.04em}
+.lead{margin:0;max-width:34rem;font-size:1.15rem;line-height:1.6;color:var(--text-2)}
+.cta-row{display:flex;flex-wrap:wrap;align-items:center;gap:1rem 1.5rem}
+.soon{font-size:1.4rem;letter-spacing:.03em;border-bottom:3px solid var(--ink);padding-bottom:2px}
+.hero-note{color:var(--text-2)}
+
+.btn{display:inline-flex;align-items:center;gap:.75rem;min-height:52px;padding:0 1.4rem;border:0;border-radius:6px;background:var(--ink);color:var(--bg);text-decoration:none;font-family:var(--font-display);font-size:1.3rem;font-weight:900;text-transform:uppercase;letter-spacing:.04em;cursor:pointer}
+.btn:hover{color:#fff}
+.btn-lg{min-height:56px;padding:0 1.75rem;font-size:1.4rem}
+.btn-g{display:inline-flex;width:24px;height:24px;border-radius:50%;background:var(--bg);color:var(--ink);align-items:center;justify-content:center;font-family:var(--font-body);font-size:.75rem;font-weight:800}
+
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:2.5rem;padding:3.5rem 0}
+.feature{display:flex;flex-direction:column;gap:.6rem}
+.feature h2{margin:0;font-size:2rem;color:var(--accent)}
+.feature p{margin:0;font-size:1.05rem;line-height:1.6;color:var(--text-2)}
+
+.access{display:flex;flex-direction:column;align-items:center;gap:1.5rem;padding:4rem 0;text-align:center}
+.access h2{margin:0;font-size:clamp(2rem,4vw,3rem);line-height:.95}
+.access p{margin:0;font-size:1.05rem;line-height:1.6;color:var(--text-2);max-width:32rem}
+.seats{display:grid;grid-template-columns:repeat(10,22px);gap:8px;justify-content:center}
+.seat{width:22px;height:22px;border-radius:50%;border:2.5px solid var(--ink)}
+.seat.is-taken{background:var(--ink)}
+.seats-label{font-size:1.5rem;color:var(--accent)}
+.access-open{display:flex;flex-direction:column;align-items:center;gap:.75rem}
+.small{font-size:.85rem;color:var(--text-2)}
+.waitlist{width:100%;max-width:30rem;display:flex;flex-direction:column;gap:.6rem;text-align:left}
+.waitlist-row{display:flex;gap:.5rem}
+.waitlist input{flex-grow:1;min-width:0;height:52px;padding:0 1rem;border-radius:6px;border:2px solid var(--ink);background:var(--bg-input);color:var(--ink);font-family:var(--font-body);font-size:1rem}
+.waitlist input::placeholder{color:var(--muted)}
+[hidden]{display:none!important}
+
+.site-footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:1rem;padding:1.75rem 0 2.5rem;font-size:.75rem}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="site-header wrap">
+    <a class="logo display" href="/">Bikepacking<span>.id</span></a>
+    <nav class="site-nav label" aria-label="Utama">
+      <a href="#fitur">Fitur</a>
+      <a class="is-cta" href="#akses">Masuk</a>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <div class="hero-art">
+        <svg class="hero-frog" viewBox="44 12 232 236" fill="none" role="img" aria-label="Maskot katak bertopi penyihir bikepacking.id">
+<defs>
+<filter id="frogRough" x="-10%" y="-10%" width="120%" height="120%">
+<feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" seed="7" result="noise"></feTurbulence>
+<feDisplacementMap in="SourceGraphic" in2="noise" scale="4" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
+</filter>
+</defs>
+<g filter="url(#frogRough)">
+<path d="M70 246 C 120 239, 196 248, 252 241" stroke="#2B2824" stroke-width="4" stroke-linecap="round"></path>
+<g fill="#2B2824" stroke="#DFD4BE" stroke-width="3">
+<ellipse cx="104" cy="210" rx="24" ry="15" transform="rotate(-28 104 210)"></ellipse>
+<ellipse cx="216" cy="210" rx="24" ry="15" transform="rotate(28 216 210)"></ellipse>
+</g>
+<g stroke="#2B2824" stroke-linecap="round" fill="none" stroke-width="5">
+<path d="M96 222 C 88 226, 80 229, 72 230 M98 225 C 92 231, 87 236, 82 240 M102 226 C 100 232, 98 237, 96 242"></path>
+<path d="M224 222 C 232 226, 240 229, 248 230 M222 225 C 228 231, 233 236, 238 240 M218 226 C 220 232, 222 237, 224 242"></path>
+</g>
+<g fill="#2B2824">
+<circle cx="71" cy="230" r="4.4"></circle><circle cx="81" cy="241" r="4.2"></circle><circle cx="96" cy="243" r="4"></circle>
+<circle cx="249" cy="230" r="4.2"></circle><circle cx="239" cy="241" r="4.4"></circle><circle cx="224" cy="243" r="4"></circle>
+<path d="M118 142 C 126 130, 194 130, 202 142 C 216 162, 222 196, 210 214 C 196 230, 124 230, 110 214 C 98 196, 104 162, 118 142 Z"></path>
+</g>
+<g stroke="#DFD4BE" stroke-linecap="round" fill="none">
+<path d="M108 158 C 128 172, 192 172, 212 158" stroke-width="2.8"></path>
+<path d="M108 158 C 106 156, 105 154, 106 151 M212 158 C 214 156, 215 154, 214 151" stroke-width="2.2"></path>
+<path d="M146 184 C 154 187, 166 187, 174 184 M144 196 C 153 199, 167 199, 176 196 M147 208 C 154 210, 166 210, 173 208" stroke-width="1.8"></path>
+</g>
+<g fill="#DFD4BE">
+<circle cx="154" cy="148" r="1.8"></circle><circle cx="166" cy="148" r="1.8"></circle>
+<circle cx="120" cy="178" r="1.6"></circle><circle cx="124" cy="196" r="1.3"></circle><circle cx="200" cy="180" r="1.6"></circle><circle cx="196" cy="198" r="1.3"></circle>
+</g>
+<g stroke-linecap="round" fill="none">
+<path d="M112 162 C 100 170, 88 172, 76 173 L 77 184 C 90 186, 102 190, 110 198 Z" fill="#2B2824"></path>
+<path d="M208 162 C 220 170, 232 172, 244 173 L 243 184 C 230 186, 218 190, 210 198 Z" fill="#2B2824"></path>
+<path d="M124 178 C 108 182, 92 184, 76 178" stroke="#2B2824" stroke-width="11"></path>
+<path d="M196 178 C 212 182, 228 184, 244 178" stroke="#2B2824" stroke-width="11"></path>
+<path d="M76 178 C 70 172, 66 168, 61 164 M75 179 C 68 179, 63 179, 57 180 M76 180 C 71 185, 67 189, 63 193" stroke="#2B2824" stroke-width="4.5"></path>
+<path d="M244 178 C 250 172, 254 168, 259 164 M245 179 C 252 179, 257 179, 263 180 M244 180 C 249 185, 253 189, 257 193" stroke="#2B2824" stroke-width="4.5"></path>
+</g>
+<g fill="#2B2824">
+<circle cx="60" cy="163" r="4"></circle><circle cx="56" cy="180" r="4.2"></circle><circle cx="62" cy="194" r="3.8"></circle>
+<circle cx="260" cy="163" r="4"></circle><circle cx="264" cy="180" r="4.2"></circle><circle cx="258" cy="194" r="3.8"></circle>
+</g>
+<path d="M136 124 C 144 104, 150 82, 153 62 C 155 49, 162 41, 176 39 C 169 49, 167 62, 170 76 C 174 96, 180 112, 186 124 Z" fill="#2B2824"></path>
+<path d="M120 128 C 134 118, 186 118, 200 128 C 186 136, 134 136, 120 128 Z" fill="#2B2824"></path>
+<path d="M182 22 L 184.7 29.3 L 192.5 29.6 L 186.4 34.4 L 188.5 41.9 L 182 37.6 L 175.5 41.9 L 177.6 34.4 L 171.5 29.6 L 179.3 29.3 Z" fill="#2B2824"></path>
+<path d="M196 23 L 200 20 M197 33 L 202 34 M188 47 L 190 51" stroke="#2B2824" stroke-width="1.8" stroke-linecap="round"></path>
+<g stroke="#DFD4BE" stroke-linecap="round" fill="none">
+<path d="M139 116 C 150 121, 170 121, 182 116" stroke-width="3.6"></path>
+<path d="M163 68 C 159 70, 159 76, 163 78 C 160 79, 156 75, 157 71 C 158 68, 161 67, 163 68 Z" stroke-width="1.5"></path>
+</g>
+<g fill="#DFD4BE">
+<path d="M155 92 L 156.3 95.3 L 159.6 95.6 L 157 97.6 L 157.8 101 L 155 99.2 L 152.2 101 L 153 97.6 L 150.4 95.6 L 153.7 95.3 Z"></path>
+<circle cx="168" cy="102" r="1.4"></circle>
+<circle cx="172" cy="56" r="1.2"></circle>
+</g>
+<g fill="#2B2824" stroke="#DFD4BE" stroke-width="3">
+<circle cx="124" cy="136" r="17"></circle>
+<circle cx="196" cy="136" r="17"></circle>
+</g>
+<g fill="#DFD4BE">
+<circle cx="124" cy="136" r="10.5"></circle>
+<circle cx="196" cy="136" r="10.5"></circle>
+</g>
+<g fill="#2B2824">
+<ellipse cx="125" cy="137" rx="7" ry="3.4"></ellipse>
+<ellipse cx="195" cy="137" rx="7" ry="3.4"></ellipse>
+</g>
+<g fill="#DFD4BE"><circle cx="121" cy="135.5" r="1.3"></circle><circle cx="191" cy="135.5" r="1.3"></circle></g>
+<g fill="#2B2824"><circle cx="90" cy="250" r="1.3"></circle><circle cx="170" cy="250" r="1.3"></circle><circle cx="236" cy="248" r="1.3"></circle></g>
+</g>
+</svg>
+      </div>
+      <div class="hero-copy">
+        <h1 class="wordmark display" aria-label="bikepacking.id — Gowes jauh, cerita panjang">
+          <span class="w-bike">Bike</span>
+          <span class="w-packing">Packing</span>
+          <span class="w-id">.ID</span>
+          <span class="w-tagline">Gowes jauh, cerita panjang</span>
+        </h1>
+        <p class="lead">Aplikasi jurnal untuk bikepacker Indonesia. Catat rute, foto, dan cerita — dari aspal kota sampai jalur yang tak ada sinyal. Segera hadir di iOS.</p>
+        <div class="cta-row">
+          <a class="btn js-when-open" href="/auth/google/login"><span class="btn-g" aria-hidden="true">G</span>Masuk dengan Google</a>
+          <span class="soon display">Coming soon di iOS</span>
+        </div>
+        <span class="label hero-note">Akses awal web · terbatas 20 pengguna · <span class="js-seats-label">20 kursi tersisa</span></span>
+      </div>
+    </section>
+
+    <section id="fitur" class="features rule">
+      <div class="feature"><span class="label">01</span><h2 class="display">Post jurnal</h2><p>Tulis cerita harian lengkap dengan foto, jarak, dan elevasi.</p></div>
+      <div class="feature"><span class="label">02</span><h2 class="display">Check-point tanpa sinyal</h2><p>Offline-first. Tersimpan di HP, tersinkron saat sinyal kembali.</p></div>
+      <div class="feature"><span class="label">03</span><h2 class="display">Story perjalanan</h2><p>Rangkai check-point dan jurnal jadi satu cerita untuk dibagikan.</p></div>
+    </section>
+
+    <section id="akses" class="access rule">
+      <span class="label">Akses awal · versi web</span>
+      <h2 class="display">Cuma 20 kursi. Gowes duluan?</h2>
+      <p>Sebelum app iOS rilis, 20 bikepacker pertama bisa mulai menulis jurnal lewat web. Masuk pakai akun Google, tanpa bikin password baru.</p>
+      <div class="seats js-seats" role="img" aria-label="0 dari 20 kursi terisi"></div>
+      <span class="seats-label display js-seats-label">20 kursi tersisa</span>
+      <div class="access-open js-when-open">
+        <a class="btn btn-lg" href="/auth/google/login"><span class="btn-g" aria-hidden="true">G</span>Masuk dengan Google</a>
+        <span class="small">Kami hanya memakai nama, email, dan foto profilmu.</span>
+      </div>
+      <form class="waitlist js-when-full" action="/api/waitlist" method="post" hidden>
+        <label class="label" for="waitlist-email">Kuota penuh — masuk daftar tunggu</label>
+        <div class="waitlist-row">
+          <input id="waitlist-email" name="email" type="email" required placeholder="email@kamu.com" autocomplete="email">
+          <button class="btn" type="submit">Antre</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <footer class="site-footer wrap rule label">
+    <span>Bawa pulang sampahmu. Tinggalkan cerita saja.</span>
+    <span>© 2026 bikepacking.id</span>
+  </footer>
+</div>
+
+<script>
+// Kuota akses awal. Backend diharapkan mengembalikan: { "taken": 7, "total": 20 }
+(function () {
+  var SEATS_ENDPOINT = '/api/seats';
+  var DEFAULT_TOTAL = 20;
+
+  function render(taken, total) {
+    taken = Math.max(0, Math.min(total, taken | 0));
+    var left = total - taken;
+    var grid = document.querySelector('.js-seats');
+    grid.innerHTML = '';
+    for (var i = 0; i < total; i++) {
+      var s = document.createElement('span');
+      s.className = 'seat' + (i < taken ? ' is-taken' : '');
+      grid.appendChild(s);
+    }
+    grid.setAttribute('aria-label', taken + ' dari ' + total + ' kursi terisi');
+    var text = left > 0 ? left + ' kursi tersisa' : 'Kuota penuh';
+    document.querySelectorAll('.js-seats-label').forEach(function (el) { el.textContent = text; });
+    document.querySelectorAll('.js-when-open').forEach(function (el) { el.hidden = left === 0; });
+    document.querySelectorAll('.js-when-full').forEach(function (el) { el.hidden = left > 0; });
+  }
+
+  render(0, DEFAULT_TOTAL);
+  fetch(SEATS_ENDPOINT, { headers: { Accept: 'application/json' } })
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(function (d) { render(d.taken, d.total || DEFAULT_TOTAL); })
+    .catch(function () { /* endpoint belum ada: tampilkan default */ });
+})();
+</script>
+</body>
+</html>
