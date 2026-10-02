@@ -89,7 +89,7 @@ Daftar sponsor yang udah deal (di luar platform), ditampilin di halaman journey.
 ### Test & docs
 - [x] Unit + router test (pola sama kayak Task 2) — 7 test baru, semua lolos terhadap Postgres asli
 - [x] `journey-service` docs update — `journey-service/README.md` (endpoint table + Struktur list)
-- [ ] Commit, push, PR
+- [x] Commit, push, PR
 
 ## Task 4 — Fitur konektivitas ala-telco (nunggu App mobile ada, belum di-desain detail)
 
