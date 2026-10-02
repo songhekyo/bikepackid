@@ -123,6 +123,21 @@ pub async fn insert_equipment(pool: &PgPool, journey_id: Uuid, category_id: Uuid
     .expect("failed to insert test equipment")
 }
 
+pub async fn insert_sponsor(pool: &PgPool, journey_id: Uuid) -> Uuid {
+    sqlx::query_scalar(
+        r#"
+        INSERT INTO journey_sponsors (journey_id, name)
+        VALUES ($1, $2)
+        RETURNING id
+        "#,
+    )
+    .bind(journey_id)
+    .bind(format!("Test sponsor {}", Uuid::new_v4()))
+    .fetch_one(pool)
+    .await
+    .expect("failed to insert test sponsor")
+}
+
 /// Builds a real `AppState` (real DB pool, real config from `.env`) for
 /// tests that drive the app through its router rather than calling
 /// individual functions directly.

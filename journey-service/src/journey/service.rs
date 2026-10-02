@@ -4,8 +4,8 @@ use uuid::Uuid;
 
 use super::{
     Checkpoint, CreateCheckpointRequest, CreateEquipmentRequest, CreateJourneyRequest,
-    CreatePostRequest, Equipment, EquipmentCategory, Journey, JourneyStatus, Post,
-    UpdateJourneyRequest,
+    CreatePostRequest, CreateSponsorRequest, Equipment, EquipmentCategory, Journey, JourneyStatus,
+    Post, Sponsor, UpdateJourneyRequest,
 };
 
 /// The one place "can this user edit this journey" is decided — every
@@ -27,9 +27,9 @@ async fn fetch_journey(pool: &PgPool, journey_id: Uuid) -> Result<Option<Journey
 }
 
 /// The shared `NotFound`/`Forbidden` gate every write path needs before
-/// touching a journey or its children (checkpoints, posts, equipment) —
-/// factored out so the four call sites can't silently diverge in their
-/// authorization behavior if the rule ever changes.
+/// touching a journey or its children (checkpoints, posts, equipment,
+/// sponsors) — factored out so the five call sites can't silently diverge in
+/// their authorization behavior if the rule ever changes.
 async fn fetch_editable_journey(
     pool: &PgPool,
     journey_id: Uuid,
@@ -420,6 +420,60 @@ pub async fn list_equipment_categories(pool: &PgPool) -> Result<Vec<EquipmentCat
             .await?;
 
     Ok(categories)
+}
+
+#[tracing::instrument(skip(pool, user, req), fields(user_id = %user.id))]
+pub async fn create_sponsor(
+    pool: &PgPool,
+    journey_id: Uuid,
+    user: &User,
+    req: CreateSponsorRequest,
+) -> Result<Sponsor, AppError> {
+    fetch_editable_journey(pool, journey_id, user).await?;
+
+    let sponsor = sqlx::query_as::<_, Sponsor>(
+        r#"
+        INSERT INTO journey_sponsors (journey_id, name, logo_url, website_url, notes)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING *
+        "#,
+    )
+    .bind(journey_id)
+    .bind(req.name)
+    .bind(req.logo_url)
+    .bind(req.website_url)
+    .bind(req.notes)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(sponsor)
+}
+
+#[tracing::instrument(skip(pool, viewer))]
+pub async fn list_sponsors(
+    pool: &PgPool,
+    journey_id: Uuid,
+    viewer: Option<&User>,
+) -> Result<Vec<Sponsor>, AppError> {
+    let journey = get_journey(pool, journey_id, viewer).await?;
+
+    let sponsors = if viewer.is_some_and(|u| user_can_edit_journey(&journey, u)) {
+        sqlx::query_as::<_, Sponsor>(
+            "SELECT * FROM journey_sponsors WHERE journey_id = $1 ORDER BY created_at",
+        )
+        .bind(journey_id)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, Sponsor>(
+            "SELECT * FROM visible_sponsors WHERE journey_id = $1 ORDER BY created_at",
+        )
+        .bind(journey_id)
+        .fetch_all(pool)
+        .await?
+    };
+
+    Ok(sponsors)
 }
 
 #[cfg(test)]
@@ -830,5 +884,82 @@ mod tests {
         let categories = list_equipment_categories(&pool).await.unwrap();
 
         assert!(categories.iter().any(|c| c.name == "Sepeda"), "expected seeded category 'Sepeda', got {categories:?}");
+    }
+
+    fn sponsor_request(name: &str) -> CreateSponsorRequest {
+        CreateSponsorRequest {
+            name: name.to_string(),
+            logo_url: None,
+            website_url: None,
+            notes: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn create_and_list_sponsors_roundtrip() {
+        let pool = test_support::pool().await;
+        let user_id = test_support::insert_user(&pool).await;
+        let user = test_support::fetch_user(&pool, user_id).await;
+
+        let journey = create_journey(&pool, user_id, journey_request("Sponsor test")).await.unwrap();
+        let created = create_sponsor(&pool, journey.id, &user, sponsor_request("Acme Bikes")).await.unwrap();
+        assert_eq!(created.name, "Acme Bikes");
+
+        let listed = list_sponsors(&pool, journey.id, Some(&user)).await.unwrap();
+        assert!(listed.iter().any(|s| s.id == created.id));
+
+        test_support::delete_user(&pool, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn create_sponsor_rejects_non_owner_non_moderator() {
+        let pool = test_support::pool().await;
+        let owner_id = test_support::insert_user(&pool).await;
+        let other_id = test_support::insert_user_with_role(&pool, Role::Creator).await;
+        let other = test_support::fetch_user(&pool, other_id).await;
+
+        let journey = create_journey(&pool, owner_id, journey_request("Owned")).await.unwrap();
+
+        let result = create_sponsor(&pool, journey.id, &other, sponsor_request("Acme Bikes")).await;
+
+        assert!(matches!(result, Err(AppError::Forbidden)));
+
+        test_support::delete_user(&pool, owner_id).await;
+        test_support::delete_user(&pool, other_id).await;
+    }
+
+    #[tokio::test]
+    async fn create_sponsor_allows_moderator_even_when_not_owner() {
+        let pool = test_support::pool().await;
+        let owner_id = test_support::insert_user(&pool).await;
+        let moderator_id = test_support::insert_user_with_role(&pool, Role::Moderator).await;
+        let moderator = test_support::fetch_user(&pool, moderator_id).await;
+
+        let journey = create_journey(&pool, owner_id, journey_request("Owned")).await.unwrap();
+
+        let created = create_sponsor(&pool, journey.id, &moderator, sponsor_request("Acme Bikes")).await.unwrap();
+        assert_eq!(created.journey_id, journey.id);
+
+        test_support::delete_user(&pool, owner_id).await;
+        test_support::delete_user(&pool, moderator_id).await;
+    }
+
+    #[tokio::test]
+    async fn published_sponsor_under_draft_journey_is_not_publicly_visible() {
+        let pool = test_support::pool().await;
+        let user_id = test_support::insert_user(&pool).await;
+        let user = test_support::fetch_user(&pool, user_id).await;
+
+        let journey = create_journey(&pool, user_id, journey_request("Draft with sponsor")).await.unwrap();
+        let sponsor = create_sponsor(&pool, journey.id, &user, sponsor_request("Acme Bikes")).await.unwrap();
+        assert_eq!(sponsor.journey_id, journey.id);
+
+        let public_result = list_sponsors(&pool, journey.id, None).await;
+        assert!(matches!(public_result, Err(AppError::NotFound)));
+
+        let owner_result = list_sponsors(&pool, journey.id, Some(&user)).await.unwrap();
+        assert_eq!(owner_result.len(), 1);
+
+        test_support::delete_user(&pool, user_id).await;
     }
 }

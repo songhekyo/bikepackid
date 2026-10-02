@@ -1,16 +1,17 @@
 # bikepackid journey-service
 
-Modul Journey/Checkpoint/Post/Equipment — dipisah dari `auth-service` (dulu `backend`), lihat
-[`docs/SYSTEM_DESIGN.md`](../docs/SYSTEM_DESIGN.md) buat desain lengkap. Per prinsip "Monolith
-First" di dokumen itu: Journey, Checkpoint, Post, dan Equipment hidup sebagai satu modul di
-crate ini (bukan dipecah lagi jadi service per-entity) — boundary-nya jelas lewat tabel sendiri
+Modul Journey/Checkpoint/Post/Equipment/Sponsor — dipisah dari `auth-service` (dulu `backend`),
+lihat [`docs/SYSTEM_DESIGN.md`](../docs/SYSTEM_DESIGN.md) buat desain lengkap. Per prinsip
+"Monolith First" di dokumen itu: Journey, Checkpoint, Post, Equipment, dan Sponsor hidup sebagai
+satu modul di crate ini (bukan dipecah lagi jadi service per-entity) — boundary-nya jelas lewat tabel sendiri
 dan `user_can_edit_journey` sebagai satu-satunya tempat permission diputuskan, tapi belum ada
 alasan konkret buat mecah lebih jauh dari "satu service terpisah dari auth-service."
 
 ## Jalankan lokal
 
 **Migrasi database bukan tanggung jawab crate ini** — schema (`journeys`, `checkpoints`,
-`posts`, `equipment_categories`, `journey_equipment`, dst) di-migrate oleh `auth-service`
+`posts`, `equipment_categories`, `journey_equipment`, `journey_sponsors`, dst) di-migrate oleh
+`auth-service`
 (`sqlx::migrate!` cuma dipanggil di sana). Jalanin `auth-service` sekali dulu terhadap
 `DATABASE_URL` yang sama sebelum nyoba request apa pun ke `journey-service` — service ini gak
 pernah migrate sendiri, cuma baca/tulis tabel yang udah dibikin `auth-service`.
@@ -33,7 +34,8 @@ pernah migrate sendiri, cuma baca/tulis tabel yang udah dibikin `auth-service`.
   sendiri (bukan di-share dari `auth-service`) — lihat komentar di fungsi itu buat alasannya:
   ini batas service yang beneran, bukan duplikasi kebetulan.
 - `src/journey/mod.rs` — struct/enum (`Journey`, `Checkpoint`, `Post`, `Equipment`,
-  `EquipmentCategory`, dst) plus `JourneyListCache` (cache in-process buat `GET /journeys`).
+  `EquipmentCategory`, `Sponsor`, dst) plus `JourneyListCache` (cache in-process buat
+  `GET /journeys`).
 - `src/journey/service.rs` — semua logic baca/tulis; ownership check diisolasi di satu fungsi
   (`user_can_edit_journey`), dipanggil dari tiap path tulis biar gak diulang-ulang.
 - `src/journey/storage.rs` — client presigned-URL ke Cloudflare R2 (`rusty-s3`); service ini gak
@@ -41,7 +43,7 @@ pernah migrate sendiri, cuma baca/tulis tabel yang udah dibikin `auth-service`.
 - `src/routes.rs` — semua HTTP handler + wiring `router()`.
 - `src/state.rs` — `AppState`/`SharedState`.
 - `src/test_support.rs` — helper test bersama (`insert_journey`, `insert_checkpoint`,
-  `insert_equipment`, `cookie_for`, dst).
+  `insert_equipment`, `insert_sponsor`, `cookie_for`, dst).
 
 ## Observability
 
@@ -69,4 +71,6 @@ ini muncul di Grafana dengan `service.name = bikepackid_journey_service`, bukan
 | GET | `/journeys/:id/equipment` | - (opsional) | aturan visibility sama kayak checkpoint/post |
 | POST | `/journeys/:id/equipment` | login + role `creator`+, owner/moderator+ | `category_id` wajib ada di `equipment_categories` |
 | GET | `/equipment-categories` | - | daftar kategori gear, publik, gak di-scope ke journey |
+| GET | `/journeys/:id/sponsors` | - (opsional) | aturan visibility sama kayak equipment |
+| POST | `/journeys/:id/sponsors` | login + role `creator`+, owner/moderator+ | - |
 | POST | `/uploads/presign-url` | login + role `creator`+ | presigned PUT URL R2 (15 menit), buat upload foto langsung dari client |
