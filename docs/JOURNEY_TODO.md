@@ -79,17 +79,17 @@ Daftar gear (sepeda, kamera, helm, tenda, dll), informational, seam murah ke com
 Daftar sponsor yang udah deal (di luar platform), ditampilin di halaman journey.
 
 ### Migrasi
-- [ ] `0011_create_journey_sponsors.sql` — `name`, `logo_url` nullable, `website_url` nullable, `notes` nullable, status enum
+- [x] `0011_create_journey_sponsors.sql` — `name`, `logo_url` nullable, `website_url` nullable, `notes` nullable, status enum, plus `visible_sponsors` view (sama pola kayak `visible_checkpoints`/`visible_posts`/`visible_equipment`)
 
 ### Kode Rust
-- [ ] Struct `Sponsor` (`journey-service/src/journey/mod.rs` atau `journey-service/src/journey/sponsor.rs`)
-- [ ] Service function: `create_sponsor`, `list_sponsors`
-- [ ] Route: `GET/POST /journeys/:id/sponsors` — permission sama kayak equipment
+- [x] Struct `Sponsor` (di `journey-service/src/journey/mod.rs`, bareng Checkpoint/Post/Equipment — gak dipecah ke file sendiri)
+- [x] Service function: `create_sponsor`, `list_sponsors`
+- [x] Route: `GET/POST /journeys/:id/sponsors` — permission sama kayak equipment (owner journey atau moderator+)
 
 ### Test & docs
-- [ ] Unit + router test
-- [ ] `journey-service` docs update (belum ada README tersendiri — lihat auth-service/README.md "Struktur" buat contoh formatnya)
-- [ ] Commit, push, PR
+- [x] Unit + router test (pola sama kayak Task 2) — 7 test baru, semua lolos terhadap Postgres asli
+- [x] `journey-service` docs update — `journey-service/README.md` (endpoint table + Struktur list)
+- [x] Commit, push, PR
 
 ## Task 4 — Fitur konektivitas ala-telco (nunggu App mobile ada, belum di-desain detail)
 

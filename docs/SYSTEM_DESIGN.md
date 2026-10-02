@@ -2,7 +2,7 @@
 
 Portal media + marketplace untuk komunitas bikepacker Indonesia. Dokumen ini merangkum keputusan desain sistem yang sudah diambil, supaya tidak hilang di percakapan dan bisa jadi acuan pengembangan lanjutan.
 
-Status implementasi saat ini: **sistem User** (login Google OAuth + role), **Journey/Checkpoint/Post inti** (termasuk upload foto ke R2), dan **Journey Equipment** **sudah dibangun**, di dua service terpisah dalam monorepo Rust/Axum/Postgres yang sama: `auth-service/` (User, dulu namanya `backend/`) dan `journey-service/` (Journey/Checkpoint/Post/Equipment — diekstrak keluar dari `auth-service` belakangan, lihat `docs/AWS_MIGRATION.md` Fase 2). Entity lain di bawah ini (TrackSegment, Journey Sponsors, Report, Marketplace) **belum diimplementasikan** — statusnya rencana/desain.
+Status implementasi saat ini: **sistem User** (login Google OAuth + role), **Journey/Checkpoint/Post inti** (termasuk upload foto ke R2), **Journey Equipment**, dan **Journey Sponsors** **sudah dibangun**, di dua service terpisah dalam monorepo Rust/Axum/Postgres yang sama: `auth-service/` (User, dulu namanya `backend/`) dan `journey-service/` (Journey/Checkpoint/Post/Equipment/Sponsor — diekstrak keluar dari `auth-service` belakangan, lihat `docs/AWS_MIGRATION.md` Fase 2). Entity lain di bawah ini (TrackSegment, Report, Marketplace) **belum diimplementasikan** — statusnya rencana/desain.
 
 ## Roadmap
 
@@ -146,7 +146,7 @@ journey_equipment
 - Satu journey bisa punya 0+ equipment — semuanya opsional, gak ada yang wajib diisi.
 - Permission-nya sama kayak checkpoint/post: cuma pemilik journey yang bisa nambah/ubah, gak ada isu kepemilikan bersama kayak 3 item "di luar scope" di atas — makanya ini didesain sekarang walau implementasinya nyusul PR terpisah setelah loop inti (journey→checkpoint→post) kebukti jalan.
 
-### Journey Sponsors (didesain di sini, implementasi nyusul PR terpisah)
+### Journey Sponsors (sudah diimplementasikan, lihat `journey-service/`)
 
 Beda dari `seeking_sponsor` di atas (nandain "masih nyari") — ini buat nunjukin sponsor yang **udah deal**, ditampilin di halaman journey (misal "Didukung oleh: ..."). Sama kayak `journey_equipment`: murni informational, gak ada logic matching/inquiry/pembayaran (itu tetep bagian dari "fitur sponsor itu sendiri" yang di luar scope), jadi kompleksitasnya setara — didesain sekarang, implementasi nyusul bareng `journey_equipment`.
 

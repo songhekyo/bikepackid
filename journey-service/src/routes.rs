@@ -14,7 +14,8 @@ use crate::{
     auth::{AuthUser, OptionalAuthUser},
     journey::{
         self, Checkpoint, CreateCheckpointRequest, CreateEquipmentRequest, CreateJourneyRequest,
-        CreatePostRequest, Equipment, EquipmentCategory, Journey, Post, UpdateJourneyRequest,
+        CreatePostRequest, CreateSponsorRequest, Equipment, EquipmentCategory, Journey, Post,
+        Sponsor, UpdateJourneyRequest,
     },
     state::SharedState,
 };
@@ -36,6 +37,10 @@ pub fn router() -> Router<SharedState> {
             get(list_equipment).post(create_equipment),
         )
         .route("/equipment-categories", get(list_equipment_categories))
+        .route(
+            "/journeys/:id/sponsors",
+            get(list_sponsors).post(create_sponsor),
+        )
         .route("/uploads/presign-url", post(presign_upload))
 }
 
@@ -305,6 +310,44 @@ async fn list_equipment_categories(
 ) -> Result<Json<Vec<EquipmentCategory>>, AppError> {
     let categories = journey::service::list_equipment_categories(&state.db).await?;
     Ok(Json(categories))
+}
+
+/// GET /journeys/:id/sponsors — same visibility rule as equipment: the
+/// owner/moderator sees every sponsor, everyone else only published ones on
+/// a non-draft journey.
+async fn list_sponsors(
+    State(state): State<SharedState>,
+    OptionalAuthUser(viewer): OptionalAuthUser,
+    Path(journey_id): Path<Uuid>,
+) -> Result<Json<Vec<Sponsor>>, AppError> {
+    let sponsors = journey::service::list_sponsors(&state.db, journey_id, viewer.as_ref()).await?;
+    Ok(Json(sponsors))
+}
+
+async fn create_sponsor(
+    State(state): State<SharedState>,
+    AuthUser(user): AuthUser,
+    Path(journey_id): Path<Uuid>,
+    Json(req): Json<CreateSponsorRequest>,
+) -> Result<(StatusCode, Json<Sponsor>), AppError> {
+    if !user.role.can_use_app() {
+        return Err(AppError::Forbidden);
+    }
+
+    let sponsor = journey::service::create_sponsor(&state.db, journey_id, &user, req).await?;
+
+    if let Err(err) = audit::log(
+        &state.db,
+        Some(user.id),
+        "sponsor_created",
+        Some(json!({ "sponsor_id": sponsor.id, "journey_id": journey_id })),
+    )
+    .await
+    {
+        tracing::error!(?err, "failed to write sponsor_created audit log");
+    }
+
+    Ok((StatusCode::CREATED, Json(sponsor)))
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -735,6 +778,96 @@ mod tests {
         let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let categories: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
         assert!(!categories.is_empty());
+    }
+
+    fn sponsor_create_body(name: &str) -> Body {
+        Body::from(serde_json::to_vec(&serde_json::json!({ "name": name })).unwrap())
+    }
+
+    #[tokio::test]
+    async fn create_sponsor_is_forbidden_for_viewers() {
+        let state = test_support::app_state().await;
+        let owner_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+        let viewer_id = test_support::insert_user(&state.db).await; // defaults to viewer
+        let viewer_cookie = test_support::cookie_for(&state, viewer_id, Role::Viewer).await;
+
+        let journey_id = test_support::insert_journey(&state.db, owner_id, "published").await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/journeys/{journey_id}/sponsors"))
+                    .header("cookie", viewer_cookie)
+                    .header("content-type", "application/json")
+                    .body(sponsor_create_body("Acme Bikes"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        test_support::delete_user(&state.db, owner_id).await;
+        test_support::delete_user(&state.db, viewer_id).await;
+    }
+
+    #[tokio::test]
+    async fn create_sponsor_is_ok_for_creators() {
+        let state = test_support::app_state().await;
+        let owner_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+        let owner_cookie = test_support::cookie_for(&state, owner_id, Role::Creator).await;
+
+        let journey_id = test_support::insert_journey(&state.db, owner_id, "published").await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/journeys/{journey_id}/sponsors"))
+                    .header("cookie", owner_cookie)
+                    .header("content-type", "application/json")
+                    .body(sponsor_create_body("Acme Bikes"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["name"], "Acme Bikes");
+
+        test_support::delete_user(&state.db, owner_id).await;
+    }
+
+    #[tokio::test]
+    async fn list_sponsors_is_public_for_a_published_journey() {
+        let state = test_support::app_state().await;
+        let owner_id = test_support::insert_user_with_role(&state.db, Role::Creator).await;
+
+        let journey_id = test_support::insert_journey(&state.db, owner_id, "published").await;
+        test_support::insert_sponsor(&state.db, journey_id).await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/journeys/{journey_id}/sponsors"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let sponsors: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(sponsors.len(), 1);
+
+        test_support::delete_user(&state.db, owner_id).await;
     }
 
     #[tokio::test]

@@ -70,6 +70,15 @@ pub enum EquipmentStatus {
     Removed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "sponsor_status", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum SponsorStatus {
+    Published,
+    Flagged,
+    Removed,
+}
+
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct Journey {
     pub id: Uuid,
@@ -134,6 +143,18 @@ pub struct Equipment {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct Sponsor {
+    pub id: Uuid,
+    pub journey_id: Uuid,
+    pub name: String,
+    pub logo_url: Option<String>,
+    pub website_url: Option<String>,
+    pub notes: Option<String>,
+    pub status: SponsorStatus,
+    pub created_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreateJourneyRequest {
     pub title: String,
@@ -192,5 +213,13 @@ pub struct CreateEquipmentRequest {
     pub name: String,
     pub brand: Option<String>,
     pub product_url: Option<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateSponsorRequest {
+    pub name: String,
+    pub logo_url: Option<String>,
+    pub website_url: Option<String>,
     pub notes: Option<String>,
 }
