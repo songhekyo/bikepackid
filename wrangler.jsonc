@@ -2,13 +2,21 @@
   // Cloudflare Workers config for deploying the static coming-soon page
   // (web/) via the Cloudflare dashboard's "Connect to Git" flow — it
   // runs `npx wrangler deploy`, which reads this file to know what to
-  // serve. No Worker script here yet: the "assets" field alone makes
-  // this a pure static-file deploy. A fetch handler (for routing API
-  // paths like /auth/* through to the EC2 origin) can be added later
-  // as a "main" entry point once that's actually wired up.
+  // serve.
+  //
+  // "main" is the fetch handler (worker/index.js): it tries static
+  // assets first for GET/HEAD, and forwards anything that misses
+  // (every API route, plus all non-GET/HEAD requests) to the EC2
+  // origin at origin.taktikdansiasat.com — see worker/index.js for
+  // why. "binding": "ASSETS" is required once a "main" script is
+  // present; without it the script has no way to reach the static
+  // files (they'd otherwise just be served directly, bypassing the
+  // script entirely).
   "name": "taktikdansiasat",
   "compatibility_date": "2026-01-01",
+  "main": "worker/index.js",
   "assets": {
-    "directory": "./web"
+    "directory": "./web",
+    "binding": "ASSETS"
   }
 }
