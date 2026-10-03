@@ -150,23 +150,20 @@ lalu `sudo nginx -t && sudo systemctl reload nginx`. Sebelum ini di-apply, front
 
 ## Landing page statis (`web/`)
 
-Halaman "coming soon" (`web/index.html` + `web/frog.svg` di root repo ini) di-serve **langsung oleh nginx dari hasil `git pull`** — bukan lewat Docker, bukan bagian dari `auth-service`/`journey-service`. Alasannya: server udah ngejalanin `git pull` di `~/bikepackid` tiap deploy (lihat bagian rename di atas), jadi file statis yang numpuk di repo otomatis ter-update di server tanpa langkah ekstra — gak perlu rebuild image atau sync manual.
+Halaman "coming soon" (`web/index.html` di root repo ini) di-serve **langsung oleh nginx dari hasil `git pull`** — bukan lewat Docker, bukan bagian dari `auth-service`/`journey-service`. Alasannya: server udah ngejalanin `git pull` di `~/bikepackid` tiap deploy (lihat bagian rename di atas), jadi file statis yang numpuk di repo otomatis ter-update di server tanpa langkah ekstra — gak perlu rebuild image atau sync manual.
 
-Tambahin dua `location` exact-match ini di `/etc/nginx/sites-available/bikepackid.conf` (urutan gak masalah relatif ke `location /`/regex lain — exact match `=` selalu menang duluan di nginx):
+Favicon-nya inline sebagai `data:image/svg+xml` di `<head>` halaman itu sendiri — gak ada file terpisah (`frog.svg` yang tadinya ada udah dihapus), jadi cuma butuh **satu** `location` exact-match di `/etc/nginx/sites-available/bikepackid.conf` (urutan gak masalah relatif ke `location /`/regex lain — exact match `=` selalu menang duluan di nginx):
 ```nginx
     location = / {
         root /home/ubuntu/bikepackid/web;
         try_files /index.html =404;
     }
-
-    location = /frog.svg {
-        root /home/ubuntu/bikepackid/web;
-        try_files /frog.svg =404;
-    }
 ```
 lalu `sudo nginx -t && sudo systemctl reload nginx`. Setelahnya `/` nyajiin halaman statis ini, sisanya (`/auth/google/login`, `/me`, `/journeys`, dst) tetep ke-proxy seperti biasa — gak ada yang berubah dari rule proxy yang udah ada.
 
-**Tombol "Masuk dengan Google"** di halaman ini ngarah ke `/auth/google/login` (rute asli di `auth-service`, bukan `/auth/google`) — udah dicek cocok sebelum file ini ditambahin.
+**Tombol "Masuk dengan Google"** di halaman ini ngarah ke `/auth/google/login` (rute asli di `auth-service`, bukan `/auth/google`) — udah dicek cocok.
+
+**Rebrand ke "Taktik dan Siasat"**: halaman ini sempat ganti isi dua kali (brand "bikepacking.id" → "Taktik dan Siasat", mascot frog → heart) setelah PR awalnya dibuat — konten final ada di `web/index.html`, gak ada perubahan ke cara serve-nya. Domain final rencananya `taktikdansiasat.com` (udah dibeli), tapi migrasi DNS/Cloudflare Pages/OAuth redirect URI belum dieksekusi — `bikepacking.cyou` yang sekarang masih yang live sampai itu beres (lihat diskusi di sesi, belum didokumentasiin di sini).
 
 **Belum ada**: endpoint `/api/seats` dan `/api/waitlist` yang dipanggil script di halaman ini — `/api/seats` gagal dengan aman (fallback ke "20 kursi tersisa" statis), tapi form waitlist bakal 404 beneran kalau disubmit. Belum dibangun, di luar scope nambahin halaman statis ini.
 
