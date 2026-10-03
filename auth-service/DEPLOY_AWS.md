@@ -148,27 +148,120 @@ lalu `sudo nginx -t && sudo systemctl reload nginx`. Sebelum ini di-apply, front
 
 **Catatan basi**: regex di atas belum nyakup endpoint yang ditambahin belakangan (`equipment-categories`, `/journeys/:id/equipment`, `/journeys/:id/sponsors`) — masih ke-proxy ke `location /` (auth-service, 8080) yang salah. Belum di-fix di sini karena di luar scope task yang lagi dikerjain pas ini ditulis; perlu diinget kalau endpoint equipment/sponsor mulai dipanggil dari frontend.
 
-## Landing page statis (`web/`)
+## Landing page statis (`web/`) — riwayat, sekarang di-serve dari Cloudflare
 
-Halaman "coming soon" (`web/index.html` + `web/frog.svg` di root repo ini) di-serve **langsung oleh nginx dari hasil `git pull`** — bukan lewat Docker, bukan bagian dari `auth-service`/`journey-service`. Alasannya: server udah ngejalanin `git pull` di `~/bikepackid` tiap deploy (lihat bagian rename di atas), jadi file statis yang numpuk di repo otomatis ter-update di server tanpa langkah ekstra — gak perlu rebuild image atau sync manual.
+Halaman "coming soon" (`web/index.html`) awalnya di-serve langsung oleh nginx EC2 dari hasil `git pull` di `bikepacking.cyou`. Itu udah **digantikan** oleh setup Cloudflare Workers di bagian bawah — `location = /` yang nyajiin file ini masih ada di config nginx EC2 tapi **gak kepake lagi** (server block `bikepacking.cyou` sekarang 301 redirect duluan, sebelum sempat nyentuh `location` manapun). Dibiarin aja, gak ganggu, tinggal dibersihin kapan-kapan kalau sempat.
 
-Tambahin dua `location` exact-match ini di `/etc/nginx/sites-available/bikepackid.conf` (urutan gak masalah relatif ke `location /`/regex lain — exact match `=` selalu menang duluan di nginx):
-```nginx
-    location = / {
-        root /home/ubuntu/bikepackid/web;
-        try_files /index.html =404;
-    }
+Isi halamannya sendiri udah berubah dua kali sejak pertama dibikin: brand "bikepacking.id" (mascot frog, favicon file `frog.svg`) → rebrand ke "Taktik dan Siasat" (mascot heart) → favicon jadi inline `data:image/svg+xml` di `<head>`-nya sendiri, gak ada file terpisah lagi. Riwayat lengkapnya ada di commit history `web/index.html`.
 
-    location = /frog.svg {
-        root /home/ubuntu/bikepackid/web;
-        try_files /frog.svg =404;
-    }
+**Tombol "Masuk dengan Google"** ngarah ke `/auth/google/login` (rute asli di `auth-service`, bukan `/auth/google`) — ini bug yang muncul berkali-kali tiap ada versi baru halaman diupload, selalu dicek-ulang sebelum di-commit.
+
+**Belum ada**: endpoint `/api/seats` dan `/api/waitlist` yang dipanggil script di halaman ini — `/api/seats` gagal dengan aman (fallback ke angka statis), tapi form waitlist bakal 404 beneran kalau disubmit. Belum dibangun.
+
+## Migrasi ke `taktikdansiasat.com` (Cloudflare Workers)
+
+Rebrand dari "bikepacking.id" ke "Taktik dan Siasat" diikuti pindah domain produksi juga, dari `bikepacking.cyou` (A record langsung ke EC2, nginx+Certbot biasa) ke `taktikdansiasat.com` yang di-serve lewat **Cloudflare Workers** (bukan nginx EC2 langsung) buat halaman statis, dengan EC2 tetap jadi origin API lewat hostname terpisah.
+
+### Arsitektur
+
 ```
-lalu `sudo nginx -t && sudo systemctl reload nginx`. Setelahnya `/` nyajiin halaman statis ini, sisanya (`/auth/google/login`, `/me`, `/journeys`, dst) tetep ke-proxy seperti biasa — gak ada yang berubah dari rule proxy yang udah ada.
+Browser → taktikdansiasat.com (Cloudflare, proxied)
+            │
+            ├─ GET/HEAD cocok file statis (web/index.html) → served dari Cloudflare, gak nyentuh EC2 sama sekali
+            │
+            └─ selain itu (semua API path + semua method non-GET/HEAD)
+                  → Worker fetch() ke origin.taktikdansiasat.com (EC2, DNS-only/gak di-proxy Cloudflare)
+                        → nginx EC2 (location regex yang sama kayak sebelumnya) → auth-service (8080) / journey-service (8081)
 
-**Tombol "Masuk dengan Google"** di halaman ini ngarah ke `/auth/google/login` (rute asli di `auth-service`, bukan `/auth/google`) — udah dicek cocok sebelum file ini ditambahin.
+bikepacking.cyou (domain lama) → 301 redirect ke taktikdansiasat.com, gak serve apa-apa sendiri lagi
+```
 
-**Belum ada**: endpoint `/api/seats` dan `/api/waitlist` yang dipanggil script di halaman ini — `/api/seats` gagal dengan aman (fallback ke "20 kursi tersisa" statis), tapi form waitlist bakal 404 beneran kalau disubmit. Belum dibangun, di luar scope nambahin halaman statis ini.
+### File-file di repo
+
+- `wrangler.jsonc` (root repo) — config Cloudflare Workers: `assets.directory` nunjuk ke `web/`, `main` nunjuk ke `worker/index.js`, `assets.binding: "ASSETS"` (wajib ada begitu ada `main` script, kalau gak Worker-nya gak bisa akses file statisnya sama sekali).
+- `worker/index.js` — fetch handler: GET/HEAD coba serve asset statis dulu, kalau 404 (atau method-nya bukan GET/HEAD) di-forward ke `https://origin.taktikdansiasat.com`. **Sengaja gak ada daftar prefix path API** (`/auth/*`, `/journeys/*`, dst) yang di-hardcode — regex nginx di EC2 udah kebukti gampang basi (lihat catatan di bagian journey-service), jadi desainnya "coba statis dulu, sisanya lempar ke origin" biar gak ada daftar yang perlu diinget-inget diupdate tiap nambah endpoint baru.
+- `package.json` (root) — minimal, cuma declare `wrangler` sebagai devDependency biar `npx wrangler` di CI Cloudflare resolve bersih.
+
+### Deploy
+
+Dashboard Cloudflare **Workers & Pages** → project **bikepackingid** (nama project beda dari `name` di `wrangler.jsonc` — Cloudflare override pakai nama project pas pertama dibikin, cuma warning, gak masalah fungsional) di-connect ke repo GitHub ini via "Connect to Git" (OAuth GitHub App, bukan "Clone via Git URL" yang cuma sekali doang gak auto-deploy). Tiap push ke `main` otomatis trigger build+deploy baru — gak ada langkah manual di server EC2 buat update halaman statisnya.
+
+### Setup DNS (Cloudflare)
+
+1. Domain `taktikdansiasat.com` di-"Connect domain" di Cloudflare (bukan "Transfer" — kepemilikan/registrasi tetap di Hostinger), nameserver registrar (Hostinger) diganti ke 2 nameserver yang dikasih Cloudflare.
+2. Record `A` default hasil scan Cloudflare (nunjuk ke IP parking Hostinger) **dihapus** — itu bukan EC2, cuma placeholder.
+3. Custom domain `taktikdansiasat.com` di-attach ke Worker-nya (project → tab Domains → Add → kosongin field subdomain buat root domain).
+4. Record tambahan buat origin: `A` `origin` → IP Elastic EC2, proxy status **DNS only** (awan abu-abu) — wajib DNS-only, kalau di-proxy Cloudflare, `fetch()` dari dalam Worker ke hostname ini bakal infinite-loop balik ke Cloudflare lagi alih-alih nyampe ke EC2.
+
+### Setup EC2 (origin terpisah buat API)
+
+`origin.taktikdansiasat.com` butuh cert TLS sendiri karena dia server block terpisah dari `bikepacking.cyou`/`taktikdansiasat.com` (nginx cuma bisa nyajiin satu cert per server block). **Jangan** pakai `certbot --expand` kalau tujuannya nambahin domain ke server block yang beda dari yang lagi dia proses — kejadian nyata di migrasi ini, `--expand` malah bikin cert BARU terpisah terus nimpa `ssl_certificate` path di server block yang di-share, bikin `bikepacking.cyou` sempat down (cert mismatch, `NET::ERR_CERT_COMMON_NAME_INVALID`) sampai dipisah jadi dua server block masing-masing cert sendiri:
+
+```nginx
+server {
+    server_name origin.taktikdansiasat.com;
+
+    location ~ ^/(journeys|me/journeys|checkpoints|uploads/presign-url) {
+        proxy_pass http://127.0.0.1:8081;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    listen [::]:443 ssl;
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/origin.taktikdansiasat.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/origin.taktikdansiasat.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+```
+
+Cert-nya sendiri didapat dengan (cert baru, bukan expand):
+```bash
+sudo certbot --nginx -d origin.taktikdansiasat.com
+```
+
+Server block `bikepacking.cyou` sekarang jadi redirect doang (lihat bagian "cutover" di bawah), dan server block port-80 (`return 404`, `# managed by Certbot`) buat `bikepacking.cyou` **gak disentuh** sepanjang migrasi ini.
+
+### OAuth
+
+Domain berubah beneran (bukan cuma rename direktori kayak migrasi `backend`→`auth-service` dulu yang domain-nya tetap) — jadi **redirect URI wajib diupdate**, beda dari migrasi-migrasi sebelumnya:
+1. Google Cloud Console → Credentials → OAuth client → Authorized redirect URIs → tambah `https://taktikdansiasat.com/auth/google/callback` (URI lama buat `bikepacking.cyou` dibiarin, gak dihapus, buat jaga-jaga selama transisi).
+2. `.env` di EC2: `GOOGLE_REDIRECT_URL=https://taktikdansiasat.com/auth/google/callback`.
+3. `docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --force-recreate auth-service` buat reload env var-nya.
+
+### Cutover `bikepacking.cyou` → redirect
+
+Setelah semua di atas ke-test jalan (static page + `/auth/google/login` dari domain baru, bukan 404/cert error), server block `bikepacking.cyou` di-ganti total jadi redirect — gak serve apa-apa sendiri lagi:
+```nginx
+server {
+    server_name bikepacking.cyou;
+
+    return 301 https://taktikdansiasat.com$request_uri;
+
+    listen [::]:443 ssl ipv6only=on;
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/bikepacking.cyou/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/bikepacking.cyou/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+```
+Dilakuin paling akhir, bukan di awal — kalau domain baru belum bener-bener siap pas ini di-apply, user yang masih punya link lama gak bisa akses apa-apa sama sekali, gak ada fallback.
 
 ## Migrasi data dari Supabase (sekali doang, pas cutover)
 
