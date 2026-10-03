@@ -1,0 +1,7 @@
+{
+  "name": "bikepackid-landing",
+  "private": true,
+  "devDependencies": {
+    "wrangler": "^3"
+  }
+}

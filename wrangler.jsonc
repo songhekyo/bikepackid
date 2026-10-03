@@ -1,0 +1,14 @@
+{
+  // Cloudflare Workers config for deploying the static coming-soon page
+  // (web/) via the Cloudflare dashboard's "Connect to Git" flow — it
+  // runs `npx wrangler deploy`, which reads this file to know what to
+  // serve. No Worker script here yet: the "assets" field alone makes
+  // this a pure static-file deploy. A fetch handler (for routing API
+  // paths like /auth/* through to the EC2 origin) can be added later
+  // as a "main" entry point once that's actually wired up.
+  "name": "taktikdansiasat",
+  "compatibility_date": "2026-01-01",
+  "assets": {
+    "directory": "./web"
+  }
+}
