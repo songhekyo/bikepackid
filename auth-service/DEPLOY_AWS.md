@@ -290,6 +290,15 @@ Dilakuin paling akhir, bukan di awal — kalau domain baru belum bener-bener sia
 
 Env var ini nge-gate seluruh fitur: kalau unset, `google_callback` skip kirim email sama sekali (lihat `Config::app_install_url`). Sengaja dibikin begini karena kode SES ini ditulis duluan, sebelum project Expo-nya sendiri ada — jadi gak mungkin ada link asli buat dikirim. Begitu app Expo udah di-publish dan link `exp://...` atau `https://u.expo.dev/...`-nya ada, isi `APP_INSTALL_URL` di `.env` EC2 dan `docker compose ... up -d --force-recreate auth-service` — tanpa perlu ganti kode apa pun.
 
+## Shared login dengan shop (repo `taktikdansiasat`, subdomain `shop.taktikdansiasat.com`)
+
+Shop-nya repo terpisah (release cadence, deploy, dan database sendiri — liat README di repo itu buat alasannya), tapi user yang udah login di sini bisa langsung belanja tanpa login ulang. Nyambungnya cuma lewat dua hal, gak ada database atau kode yang di-share:
+
+1. **`COOKIE_DOMAIN=taktikdansiasat.com`** di `.env` EC2 — bikin cookie sesi (`Config::cookie_domain`, diterapin di `routes/auth.rs::with_shared_domain`) ke-scope ke domain, bukan cuma host-nya doang, jadi otomatis kebawa browser ke `shop.taktikdansiasat.com` juga. **Wajib unset di local dev** — cookie yang di-scope ke domain asli gak pernah dikirim ke `localhost`.
+2. **`JWT_SECRET` yang sama persis** di `.env` shop — shop cuma *verifikasi* token (baca cookie `session`, cek signature HS256 + `exp`, baca `role` dari claims), gak pernah nerbitin token sendiri. Login/logout/revoke session tetep cuma di `auth-service` ini.
+
+Keterbatasan yang disadarin: shop gak ngecek status revoke session ke database (beda sama `AuthUser` extractor di sini yang round-trip ke tabel `sessions` — liat `auth/extractor.rs`). Jadi sesi yang di-revoke (misal abis "sign out everywhere") masih keanggep valid di shop sampe JWT-nya expired natural, walau di sini udah langsung ke-block. Trade-off yang diterima demi independensi — gak ada panggilan network/database silang servis buat tiap request shop.
+
 ## Migrasi data dari Supabase (sekali doang, pas cutover)
 
 ```bash

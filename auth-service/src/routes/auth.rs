@@ -27,11 +27,27 @@ const QUERY_VALUE_SAFE: &AsciiSet = &NON_ALPHANUMERIC
 use crate::{
     audit,
     auth::{extractor::SESSION_COOKIE, google, jwt, session, AuthUser},
+    config::Config,
     email,
     error::AppError,
     models::User,
     state::{PendingLogin, SharedState, LOGIN_ATTEMPT_TTL_MINUTES},
 };
+
+/// Applies `Config::cookie_domain` (unset in local dev, `taktikdansiasat.com`
+/// in production) to a session cookie — shared by every place this crate
+/// builds or clears the `session` cookie, so the three call sites (login,
+/// logout, sign-out-everywhere) can't drift out of sync on which one
+/// remembers to scope it. Clearing a cookie set with a `Domain` attribute
+/// requires the clearing cookie to carry the same `Domain`, or the browser
+/// treats it as an unrelated cookie and the original one never actually
+/// gets removed — so this matters for logout too, not just login.
+fn with_shared_domain(mut cookie: Cookie<'static>, config: &Config) -> Cookie<'static> {
+    if let Some(domain) = &config.cookie_domain {
+        cookie.set_domain(domain.clone());
+    }
+    cookie
+}
 
 pub async fn google_login(State(state): State<SharedState>) -> impl IntoResponse {
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
@@ -207,6 +223,7 @@ pub async fn google_callback(
         .path("/")
         .max_age(time::Duration::seconds(max_age_seconds))
         .build();
+    let cookie = with_shared_domain(cookie, &state.config);
 
     let jar = CookieJar::new().add(cookie);
 
@@ -229,6 +246,7 @@ pub async fn logout(State(state): State<SharedState>, jar: CookieJar) -> impl In
         .path("/")
         .max_age(time::Duration::seconds(0))
         .build();
+    let expired = with_shared_domain(expired, &state.config);
 
     (jar.add(expired), Redirect::to("/"))
 }
@@ -263,6 +281,52 @@ pub async fn sign_out_everywhere(
         .path("/")
         .max_age(time::Duration::seconds(0))
         .build();
+    let expired = with_shared_domain(expired, &state.config);
 
     Ok((CookieJar::new().add(expired), StatusCode::NO_CONTENT))
+}
+
+#[cfg(test)]
+mod domain_tests {
+    use super::*;
+
+    fn config_with_domain(domain: Option<&str>) -> Config {
+        Config {
+            database_url: String::new(),
+            jwt_secret: String::new(),
+            google_client_id: String::new(),
+            google_client_secret: String::new(),
+            google_redirect_url: String::new(),
+            frontend_url: String::new(),
+            port: 8080,
+            cookie_secure: true,
+            app_install_url: None,
+            cookie_domain: domain.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn leaves_cookie_domain_unset_when_config_has_none() {
+        let cookie = Cookie::build((SESSION_COOKIE, "token")).build();
+        let cookie = with_shared_domain(cookie, &config_with_domain(None));
+        assert!(cookie.domain().is_none());
+    }
+
+    #[test]
+    fn sets_cookie_domain_when_config_has_one() {
+        let cookie = Cookie::build((SESSION_COOKIE, "token")).build();
+        let cookie = with_shared_domain(cookie, &config_with_domain(Some("taktikdansiasat.com")));
+        assert_eq!(cookie.domain(), Some("taktikdansiasat.com"));
+    }
+
+    // A leading dot is the old RFC 2965 convention — harmless to pass, but
+    // the `cookie` crate strips it since RFC 6265 made it redundant. This
+    // pins that normalization so `COOKIE_DOMAIN` works the same whichever
+    // form someone sets it to in `.env`.
+    #[test]
+    fn strips_a_redundant_leading_dot() {
+        let cookie = Cookie::build((SESSION_COOKIE, "token")).build();
+        let cookie = with_shared_domain(cookie, &config_with_domain(Some(".taktikdansiasat.com")));
+        assert_eq!(cookie.domain(), Some("taktikdansiasat.com"));
+    }
 }
