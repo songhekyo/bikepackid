@@ -99,6 +99,18 @@ Periode: 24–28 September 2026. Detail rencana & alasan lengkap ada di [`docs/A
 
 **Cutover domain paralel, bukan big-bang.** DNS TTL `bikepacking.cyou` diturunin ke 60 detik dulu, EC2 disetup & ditest lengkap (data ter-migrasi, login OAuth jalan) **sambil Nusa masih live**, baru A record di-switch. Karena domain gak berubah, gak perlu sentuh apa pun di Google OAuth Console (redirect URI tetap valid). Nusa dibiarin idle beberapa hari sebagai fallback sebelum beneran di-cancel.
 
+## 13. Watchtower diam-diam berhenti update total selama berminggu-minggu
+
+Ketemu 4 Oktober 2026, gak sengaja — lagi ngurusin fitur lain (AWS SES, waitlist endpoint), eh `/api/waitlist` 404 di production padahal kodenya udah lama di-merge ke `main`. Dicek `/version` endpoint: container `auth-service` masih jalan commit `6524e3e` (PR #32) — **27 commit di belakang `main`**, dari sebelum Journey Equipment/Sponsors, landing page, SES, waitlist, semuanya. `docker ps` nunjukin container "Up 24 hours", nyesatin — itu cuma restart (reboot EC2 atau semacamnya), bukan hasil pull image baru.
+
+Root cause-nya ternyata sambungan langsung ke insiden section 12 ("GHCR image balik private berulang kali"): fix waktu itu `docker login` pakai classic PAT **di host** doang. Watchtower jalan di container terpisah — `docker.sock` yang di-mount cuma ngasih dia akses ke Docker Engine API host, **bukan** kredensial registry yang tersimpan di situ. Watchtower bikin request API registry sendiri (buat cek digest sebelum mutusin perlu pull atau enggak), dan itu butuh `config.json`-nya sendiri — gak pernah di-mount. Hasilnya: tiap poll (5 menit sekali, berminggu-minggu) gagal diam-diam dengan `401 Unauthorized`, log-nya cuma kebaca kalau dicek manual (`docker logs backend-watchtower-1`), gak ada notifikasi apapun secara default.
+
+Yang bikin ini gampang kelewat: `docker pull` manual di host **selalu berhasil** (daemon host punya PAT-nya dari fix section 12) — jadi "coba manual, kok jalan" gak pernah membuktikan Watchtower-nya juga jalan, dua proses yang beda biarpun share Docker socket yang sama.
+
+Fix: mount `${HOME}/.docker/config.json:/config.json:ro` ke container Watchtower juga (`auth-service/docker-compose.yml`), plus workaround manual (`docker compose pull && up -d`) buat langsung nyamain production ke `main` tanpa nunggu fix ini ke-apply duluan.
+
+**Pelajaran buat ke depan**: Watchtower "container-nya nyala dan healthy" itu gak sama dengan "updatenya jalan" — perlu dicek `docker logs` beneran secara berkala, bukan cuma `docker ps`. Pertimbangkan nambahin notifikasi Watchtower (Slack/webhook) kalau project ini tumbuh, biar kegagalan diam-diam kayak gini kekirim otomatis, bukan nunggu ketemu gak sengaja.
+
 ## Ringkasan: rencana vs. kenyataan
 
 | Komponen | Rencana awal | Yang kepake |

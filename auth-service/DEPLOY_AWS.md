@@ -70,6 +70,12 @@ docker compose -f docker-compose.yml -f docker-compose.postgres.yml logs -f auth
 ```
 Cari `bikepackid auth-service listening on port 8080` tanpa `panicked at ...`. Setelah ini, **Watchtower yang jalanin update-nya otomatis** — sama persis kayak VPS lama, gak ada bedanya (Watchtower gak peduli host-nya di mana).
 
+**Jangan cuma percaya `docker ps` buat mastiin Watchtower beneran jalan** — "Up" cuma berarti container-nya nyala, bukan berarti update-nya berhasil. Watchtower pernah diam-diam gagal total berminggu-minggu (401 ke GHCR, `docker-compose.yml` sekarang udah fix mount `config.json`-nya) tanpa ada tanda apapun selain `docker logs backend-watchtower-1` dan `curl localhost:8080/version` ketinggalan jauh dari `main` — lihat `docs/INFRA_HISTORY.md` bagian 13. Cek berkala kalau ragu:
+```bash
+curl -s http://localhost:8080/version   # bandingin sama `git log origin/main -1`
+docker logs backend-watchtower-1 --since 24h | grep -i unauthorized
+```
+
 **Image harus `arm64`** — `t4g.small` itu Graviton/ARM, CI (`.github/workflows/ci.yml`) build khusus `arm64` (native runner `ubuntu-24.04-arm`, bukan `amd64`+emulasi). Kalau ketemu `exec format error`, itu tanda ada yang salah build target arch-nya, bukan masalah di instance ini.
 
 ## Reverse proxy + HTTPS
