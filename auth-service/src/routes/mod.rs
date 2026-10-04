@@ -4,6 +4,7 @@ pub mod me;
 pub mod waitlist;
 
 use axum::{
+    extract::DefaultBodyLimit,
     routing::{get, post},
     Router,
 };
@@ -55,8 +56,14 @@ pub fn router() -> Router<SharedState> {
             .expect("rate-limit config: burst_size and per_second must be non-zero"),
     ));
 
+    // Axum applies no request body size limit by default (nothing else in
+    // this crate accepts a body at all — the OAuth routes are GET-only, so
+    // this is the first time it matters). A plain `email=...` form body is
+    // a few dozen bytes; 2 KiB leaves generous headroom while still
+    // rejecting a multi-megabyte body outright instead of buffering it.
     let waitlist_routes = Router::new()
         .route("/api/waitlist", post(waitlist::create))
+        .layer(DefaultBodyLimit::max(2 * 1024))
         .layer(GovernorLayer {
             config: waitlist_governor_conf,
         });
@@ -497,6 +504,28 @@ mod tests {
             .execute(&state.db)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn waitlist_signup_rejects_an_oversized_body() {
+        let state = test_support::app_state().await;
+        let app = router().with_state(state);
+
+        let oversized = format!("email=a{}@example.com", "a".repeat(3 * 1024));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/waitlist")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .header("x-forwarded-for", "203.0.113.70")
+                    .body(Body::from(oversized))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 
     #[tokio::test]
