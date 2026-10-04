@@ -65,6 +65,42 @@ jobs:
       - name: cargo audit
         run: cargo audit
 
+  # Decides which service images actually need rebuilding for this push —
+  # without this, both build-and-push jobs ran unconditionally on every
+  # push to main, including commits that only touched web/index.html or
+  # docs. That meant Watchtower on EC2 saw a "new" image (new SHA tag,
+  # identical layers underneath) and restarted both containers for no
+  # code reason — a real, avoidable blip on every unrelated change.
+  # Doesn't `need: test` — this is cheap and independent, so it runs in
+  # parallel with the test job instead of waiting on it.
+  changes:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    outputs:
+      auth-service: ${{ steps.filter.outputs.auth-service }}
+      journey-service: ${{ steps.filter.outputs.journey-service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # Cargo.lock/Cargo.toml at the repo root are the shared
+          # workspace manifest/lockfile — a dependency bump there can
+          # change either service's build even without touching its own
+          # directory, so both filters include them. `common/` is a path
+          # dependency of both services for the same reason.
+          filters: |
+            auth-service:
+              - 'auth-service/**'
+              - 'common/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+            journey-service:
+              - 'journey-service/**'
+              - 'common/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+
   # arm64-only, on a native ARM64 GitHub-hosted runner — amd64 was needed
   # while the Nusa VPS (x86) was still live; now that it's decommissioned
   # (production is the AWS EC2 Graviton instance), arm64 is the only
@@ -76,8 +112,8 @@ jobs:
   # service — see auth-service/DEPLOY_AWS.md for the server-side image
   # rename this required.
   build-and-push-auth-service:
-    needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [test, changes]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.changes.outputs.auth-service == 'true'
     runs-on: ubuntu-24.04-arm
     permissions:
       packages: write
@@ -112,8 +148,8 @@ jobs:
   # nothing deploys it: docker-compose.yml/nginx/the EC2 instance are
   # untouched by this repo until a deliberate follow-up wires it in.
   build-and-push-journey-service:
-    needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [test, changes]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.changes.outputs.journey-service == 'true'
     runs-on: ubuntu-24.04-arm
     permissions:
       packages: write
