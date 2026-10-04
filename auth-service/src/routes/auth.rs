@@ -27,6 +27,7 @@ const QUERY_VALUE_SAFE: &AsciiSet = &NON_ALPHANUMERIC
 use crate::{
     audit,
     auth::{extractor::SESSION_COOKIE, google, jwt, session, AuthUser},
+    email,
     error::AppError,
     models::User,
     state::{PendingLogin, SharedState, LOGIN_ATTEMPT_TTL_MINUTES},
@@ -139,6 +140,21 @@ pub async fn google_callback(
         .instrument(tracing::info_span!("fetch_google_profile"))
         .await?;
 
+    // Checked before the upsert below so a brand-new signup can be told
+    // apart from a returning user's login — the welcome email must only go
+    // out once. Two first-ever logins for the same `google_id` racing each
+    // other could both see "doesn't exist yet" and both send the email;
+    // the upsert itself stays correct either way (`ON CONFLICT` still only
+    // ever produces one row), so the only cost of that rare race is an
+    // occasional duplicate email, not a data problem.
+    let is_new_user = !sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM users WHERE google_id = $1)",
+    )
+    .bind(&google_user.sub)
+    .fetch_one(&state.db)
+    .instrument(tracing::info_span!("check_existing_user"))
+    .await?;
+
     let user = sqlx::query_as::<_, User>(
         r#"
         INSERT INTO users (google_id, email, name, avatar_url)
@@ -162,6 +178,21 @@ pub async fn google_callback(
     if let Err(err) = audit::log(&state.db, Some(user.id), "login", Some(json!({ "method": "google" }))).await
     {
         tracing::error!(?err, "failed to write login audit log");
+    }
+
+    // Only ever fires once per user, right after their very first login —
+    // and only once the Expo project this links to actually exists
+    // (`APP_INSTALL_URL` stays unset until then, see `Config::app_install_url`).
+    if is_new_user {
+        if let Some(install_url) = &state.config.app_install_url {
+            if let Err(err) =
+                email::send_welcome_email(&state.ses_client, install_url, &user.email, &user.name)
+                    .instrument(tracing::info_span!("send_welcome_email"))
+                    .await
+            {
+                tracing::error!(?err, "failed to send welcome email");
+            }
+        }
     }
 
     // Derived from the session's real expiry (not a separately-hardcoded

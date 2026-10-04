@@ -28,6 +28,10 @@ pub struct AppState {
     pub oauth_client: OauthClient,
     pub http_client: reqwest::Client,
     pub pending_logins: PendingLogins,
+    /// Credentials are resolved lazily per-call from the environment's
+    /// default provider chain (an IAM role attached to the EC2 instance in
+    /// production) — nothing here needs a static access key.
+    pub ses_client: aws_sdk_sesv2::Client,
 }
 
 pub type SharedState = Arc<AppState>;

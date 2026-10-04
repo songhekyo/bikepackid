@@ -74,5 +74,6 @@ Infrastruktur yang dulu ada di sini (error handling, audit log, JWT issue/verify
 | POST | `/auth/sign-out-everywhere` | wajib login | revoke semua sesi milik user, bukan cuma yang sedang dipakai |
 | GET | `/me` | wajib login | profil user yang sedang login |
 | GET | `/app/status` | wajib login + role `creator`+ | contoh gate khusus app |
+| POST | `/api/waitlist` | - | form submit biasa (bukan JSON) dari `web/index.html` — simpan email, redirect balik ke `FRONTEND_URL` |
 
 Endpoint Journey/Checkpoint/Post/upload (`/journeys`, `/me/journeys`, `/checkpoints/*`, `/uploads/presign-url`) sekarang di [`journey-service`](../journey-service) (port 8081), bukan di sini lagi — daftar lengkapnya ada di `router()` pada `journey-service/src/routes.rs` (belum ada README tersendiri di sana).

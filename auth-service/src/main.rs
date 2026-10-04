@@ -1,5 +1,6 @@
 mod auth;
 mod config;
+mod email;
 mod models;
 mod routes;
 mod state;
@@ -62,6 +63,14 @@ async fn main() {
         .build()
         .expect("failed to build HTTP client");
 
+    // Region and credentials both come from the environment's default
+    // provider chain — on EC2 that's the attached instance role and the
+    // IMDS-reported region, so nothing AWS-specific needs to live in
+    // `.env`. Neither step makes a network call, so this can't slow down
+    // or fail startup even before that role is attached.
+    let aws_sdk_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+    let ses_client = aws_sdk_sesv2::Client::new(&aws_sdk_config);
+
     let cors = CorsLayer::new()
         .allow_origin(
             config
@@ -81,6 +90,7 @@ async fn main() {
         oauth_client,
         http_client,
         pending_logins: Mutex::new(std::collections::HashMap::new()),
+        ses_client,
     });
 
     spawn_session_purge_task(db);

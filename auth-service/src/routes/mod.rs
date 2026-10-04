@@ -1,8 +1,10 @@
 pub mod auth;
 pub mod health;
 pub mod me;
+pub mod waitlist;
 
 use axum::{
+    extract::DefaultBodyLimit,
     routing::{get, post},
     Router,
 };
@@ -40,10 +42,37 @@ pub fn router() -> Router<SharedState> {
             config: governor_conf,
         });
 
+    // Same burst/replenish shape as the OAuth group above, but its own
+    // `GovernorConfigBuilder` instance — a landing-page form submit and an
+    // OAuth redirect are different enough concerns that sharing one limiter
+    // would just make a future change to either one's rate accidentally
+    // affect the other.
+    let waitlist_governor_conf = Box::leak(Box::new(
+        GovernorConfigBuilder::default()
+            .key_extractor(SmartIpKeyExtractor)
+            .per_second(2)
+            .burst_size(5)
+            .finish()
+            .expect("rate-limit config: burst_size and per_second must be non-zero"),
+    ));
+
+    // Axum applies no request body size limit by default (nothing else in
+    // this crate accepts a body at all — the OAuth routes are GET-only, so
+    // this is the first time it matters). A plain `email=...` form body is
+    // a few dozen bytes; 2 KiB leaves generous headroom while still
+    // rejecting a multi-megabyte body outright instead of buffering it.
+    let waitlist_routes = Router::new()
+        .route("/api/waitlist", post(waitlist::create))
+        .layer(DefaultBodyLimit::max(2 * 1024))
+        .layer(GovernorLayer {
+            config: waitlist_governor_conf,
+        });
+
     Router::new()
         .route("/health", get(health::health))
         .route("/version", get(health::version))
         .merge(google_oauth_routes)
+        .merge(waitlist_routes)
         .route("/auth/logout", post(auth::logout))
         .route("/auth/sign-out-everywhere", post(auth::sign_out_everywhere))
         .route("/me", get(me::me))
@@ -435,4 +464,88 @@ mod tests {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
+    #[tokio::test]
+    async fn waitlist_signup_redirects_and_is_idempotent_on_repeat_email() {
+        let state = test_support::app_state().await;
+        let app = router().with_state(state.clone());
+
+        let submit = |app: Router<()>| {
+            let app = app.clone();
+            async move {
+                app.oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/waitlist")
+                        .header("content-type", "application/x-www-form-urlencoded")
+                        .header("x-forwarded-for", "203.0.113.50")
+                        .body(Body::from("email=rider%40example.com"))
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+            }
+        };
+
+        assert_eq!(submit(app.clone()).await.status(), StatusCode::SEE_OTHER);
+        // Resubmitting the same email (double-click, back-button resend)
+        // must not error — it's a no-op, not a duplicate-key failure.
+        assert_eq!(submit(app.clone()).await.status(), StatusCode::SEE_OTHER);
+
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM waitlist_signups WHERE email = $1")
+                .bind("rider@example.com")
+                .fetch_one(&state.db)
+                .await
+                .unwrap();
+        assert_eq!(count, 1);
+
+        sqlx::query("DELETE FROM waitlist_signups WHERE email = $1")
+            .bind("rider@example.com")
+            .execute(&state.db)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn waitlist_signup_rejects_an_oversized_body() {
+        let state = test_support::app_state().await;
+        let app = router().with_state(state);
+
+        let oversized = format!("email=a{}@example.com", "a".repeat(3 * 1024));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/waitlist")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .header("x-forwarded-for", "203.0.113.70")
+                    .body(Body::from(oversized))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn waitlist_signup_rejects_an_empty_email() {
+        let state = test_support::app_state().await;
+        let app = router().with_state(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/waitlist")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .header("x-forwarded-for", "203.0.113.60")
+                    .body(Body::from("email="))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
 }

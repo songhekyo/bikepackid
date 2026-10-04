@@ -27,6 +27,22 @@ anyhow = "1"
 tracing = "0.1"
 tower_governor = { version = "0.3.0", features = ["tracing"] }
 percent-encoding = "2.3.2"
+# aws-sdk-sesv2's *own* default feature set bundles two unrelated things
+# both named confusingly: "default-https-client" is the modern
+# hyper-1/rustls-0.23 stack (keep it), but its separate "rustls" feature
+# is specifically the flag that turns on aws-smithy-runtime's legacy
+# hyper-0.14/rustls-0.21 connector (`connector-hyper-0-14-x`) — a
+# backward-compat path, not an alternative TLS backend for the modern
+# client. Verified via `cargo tree -e features -i aws-smithy-http-client`:
+# with "rustls" enabled, both stacks end up in the tree simultaneously,
+# and `cargo audit` flags real RUSTSEC advisories against the old
+# h2/rustls-webpki that drags in. Dropping just "rustls" (not
+# "default-https-client") removes the legacy connector entirely; nothing
+# else in the tree re-enables it. Also drops "sigv4a" (multi-region
+# SigV4A signing — SES doesn't need it) since trimming features means
+# picking them explicitly rather than keeping the full default set.
+aws-sdk-sesv2 = { version = "1.140.0", default-features = false, features = ["rt-tokio", "default-https-client"] }
+aws-config = "1.12.0"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
