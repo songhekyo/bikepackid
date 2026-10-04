@@ -20,7 +20,7 @@ pub async fn send_welcome_email(
     install_url: &str,
     to_email: &str,
     to_name: &str,
-) -> Result<(), aws_sdk_sesv2::Error> {
+) -> Result<(), Box<aws_sdk_sesv2::Error>> {
     let subject = Content::builder()
         .data("Selamat datang di Taktik dan Siasat")
         .charset("UTF-8")
@@ -61,7 +61,8 @@ pub async fn send_welcome_email(
                 .build(),
         )
         .send()
-        .await?;
+        .await
+        .map_err(|err| Box::new(aws_sdk_sesv2::Error::from(err)))?;
 
     Ok(())
 }
