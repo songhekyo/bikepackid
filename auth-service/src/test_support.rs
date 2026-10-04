@@ -60,11 +60,22 @@ pub async fn app_state() -> crate::state::SharedState {
         &config.google_redirect_url,
     );
 
+    // A static region, built with no I/O — unlike `main.rs`'s
+    // `aws_config::load_defaults`, this never probes EC2's instance
+    // metadata endpoint, which would otherwise add a real (if short)
+    // network timeout to every test that calls `app_state()` while running
+    // off EC2.
+    let ses_config = aws_sdk_sesv2::config::Config::builder()
+        .behavior_version(aws_sdk_sesv2::config::BehaviorVersion::latest())
+        .region(aws_sdk_sesv2::config::Region::new("us-east-1"))
+        .build();
+
     Arc::new(crate::state::AppState {
         db,
         config,
         oauth_client,
         http_client: reqwest::Client::new(),
         pending_logins: Mutex::new(HashMap::new()),
+        ses_client: aws_sdk_sesv2::Client::from_conf(ses_config),
     })
 }

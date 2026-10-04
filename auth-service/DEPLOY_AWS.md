@@ -263,6 +263,31 @@ server {
 ```
 Dilakuin paling akhir, bukan di awal — kalau domain baru belum bener-bener siap pas ini di-apply, user yang masih punya link lama gak bisa akses apa-apa sama sekali, gak ada fallback.
 
+## Email transaksional (AWS SES)
+
+`auth-service` kirim email "cara instal app" sekali doang, pas user baru pertama kali login lewat Google (bukan tiap login) — kode-nya di `src/email.rs`, dipanggil dari `routes/auth.rs::google_callback`. Pengirimnya `noreply@taktikdansiasat.com`, lewat SES, bukan Resend/provider lain — SES dipilih karena Resend sendiri jalan di atas SES, dan domain `taktikdansiasat.com` udah dipegang penuh jadi gak perlu beli hosting email buat verifikasi.
+
+### Setup sekali doang di AWS Console
+1. SES Console → Verified identities → tambah domain `taktikdansiasat.com`, verifikasi lewat DNS (tambahin CNAME DKIM yang dikasih SES ke Cloudflare DNS — bukan Hostinger, nameserver udah pindah ke Cloudflare).
+2. Account dashboard → Dedicated IPs/pricing → pilih à la carte / pay-per-use (bukan plan "Essentials" yang ada minimum bulanan) — volume email di project ini kecil banget, pay-per-use ($0.10/1.000 email) jauh lebih murah.
+3. Minta **production access** (keluar dari sandbox mode) — tanpa ini SES cuma bisa kirim ke alamat yang di-verifikasi manual satu-satu. Review AWS ~24 jam.
+4. **IAM**: attach instance role ke EC2 instance (bukan access key statis di `.env`) dengan policy minimal:
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Effect": "Allow",
+       "Action": ["ses:SendEmail", "ses:SendRawEmail"],
+       "Resource": "*"
+     }]
+   }
+   ```
+   AWS SDK di `auth-service` (`aws-config`) otomatis resolve credentials dari instance role ini dan region dari IMDS — gak ada `AWS_*` env var yang perlu diisi di `.env` sama sekali.
+
+### `APP_INSTALL_URL`
+
+Env var ini nge-gate seluruh fitur: kalau unset, `google_callback` skip kirim email sama sekali (lihat `Config::app_install_url`). Sengaja dibikin begini karena kode SES ini ditulis duluan, sebelum project Expo-nya sendiri ada — jadi gak mungkin ada link asli buat dikirim. Begitu app Expo udah di-publish dan link `exp://...` atau `https://u.expo.dev/...`-nya ada, isi `APP_INSTALL_URL` di `.env` EC2 dan `docker compose ... up -d --force-recreate auth-service` — tanpa perlu ganti kode apa pun.
+
 ## Migrasi data dari Supabase (sekali doang, pas cutover)
 
 ```bash

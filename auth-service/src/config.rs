@@ -12,6 +12,12 @@ pub struct Config {
     /// Whether session cookies get the `Secure` flag (HTTPS-only). Defaults
     /// to `true` — set `COOKIE_SECURE=false` only for local HTTP development.
     pub cookie_secure: bool,
+    /// The `exp://...` (or published `https://u.expo.dev/...`) link testers
+    /// open in Expo Go to install the mobile app. Left unset until that
+    /// project actually exists — `email::send_welcome_email` is skipped
+    /// entirely while this is `None`, so merging the SES integration ahead
+    /// of the app itself can't ever send a broken link.
+    pub app_install_url: Option<String>,
 }
 
 impl Config {
@@ -30,6 +36,7 @@ impl Config {
                 .parse()
                 .expect("PORT must be a valid number"),
             cookie_secure: Self::parse_cookie_secure(env::var("COOKIE_SECURE").ok()),
+            app_install_url: env::var("APP_INSTALL_URL").ok(),
         }
     }
 
