@@ -16,7 +16,17 @@ export default {
     // Everything else (POST/PATCH/... and any GET/HEAD that missed a
     // static asset) goes to the EC2 origin, reachable only at this
     // DNS-only (non-proxied) hostname.
+    //
+    // redirect: "manual" is load-bearing — fetch()'s default is "follow",
+    // which means *this Worker* would transparently chase a 3xx from the
+    // origin (e.g. the waitlist form's 303 back to taktikdansiasat.com)
+    // instead of the real client. Since that redirect target is this same
+    // zone, the Worker would end up fetching itself — Cloudflare's
+    // same-zone loop protection kicks in and the client gets back a
+    // broken/empty response instead of the page. Passing the raw 3xx +
+    // Location straight through lets the browser do the following, same
+    // as any ordinary reverse proxy should.
     const originUrl = new URL(url.pathname + url.search, "https://origin.taktikdansiasat.com");
-    return fetch(new Request(originUrl, request));
+    return fetch(new Request(originUrl, request), { redirect: "manual" });
   },
 };
