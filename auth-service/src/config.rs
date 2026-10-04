@@ -18,6 +18,15 @@ pub struct Config {
     /// entirely while this is `None`, so merging the SES integration ahead
     /// of the app itself can't ever send a broken link.
     pub app_install_url: Option<String>,
+    /// Scopes the session cookie to `taktikdansiasat.com` so the shop
+    /// (`shop.taktikdansiasat.com`, a separate repo/service) can read the
+    /// same login — per RFC 6265, a `Domain` attribute without a leading
+    /// dot already covers subdomains too (the old RFC 2965 leading-dot
+    /// convention is unnecessary with modern browsers; the `cookie` crate
+    /// strips one if you pass it anyway). Left unset by default: a cookie
+    /// scoped to `taktikdansiasat.com` is never sent to `localhost`, so
+    /// this must stay `None` for local dev and only be set in production.
+    pub cookie_domain: Option<String>,
 }
 
 impl Config {
@@ -37,6 +46,7 @@ impl Config {
                 .expect("PORT must be a valid number"),
             cookie_secure: Self::parse_cookie_secure(env::var("COOKIE_SECURE").ok()),
             app_install_url: env::var("APP_INSTALL_URL").ok(),
+            cookie_domain: env::var("COOKIE_DOMAIN").ok(),
         }
     }
 
