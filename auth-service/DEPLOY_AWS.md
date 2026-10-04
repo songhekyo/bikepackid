@@ -186,6 +186,8 @@ bikepacking.cyou (domain lama) → 301 redirect ke taktikdansiasat.com, gak serv
 
 Dashboard Cloudflare **Workers & Pages** → project **bikepackingid** (nama project beda dari `name` di `wrangler.jsonc` — Cloudflare override pakai nama project pas pertama dibikin, cuma warning, gak masalah fungsional) di-connect ke repo GitHub ini via "Connect to Git" (OAuth GitHub App, bukan "Clone via Git URL" yang cuma sekali doang gak auto-deploy). Tiap push ke `main` otomatis trigger build+deploy baru — gak ada langkah manual di server EC2 buat update halaman statisnya.
 
+Settings → Builds punya **dua** command terpisah yang gampang ketuker: tab **Production** (`main`) pake field "Deploy command", tab **Previews Base** (branch lain/PR) pake field "Preview command" — isinya harus sama-sama `npx wrangler deploy`, bukan `npx wrangler versions upload` (itu cuma upload versi, gak nge-live-in apa-apa sampai di-promote manual) atau `npx wrangler preview` (udah deprecated). Kalau salah satu field ini diubah lewat dashboard, **"Retry build" di build yang udah gagal gak kebaca perubahannya** — Cloudflare snapshot command-nya pas build itu pertama kali di-trigger, bukan baca ulang config terbaru. Harus push commit baru (bukan retry) biar build berikutnya beneran pake command yang udah diupdate.
+
 ### Setup DNS (Cloudflare)
 
 1. Domain `taktikdansiasat.com` di-"Connect domain" di Cloudflare (bukan "Transfer" — kepemilikan/registrasi tetap di Hostinger), nameserver registrar (Hostinger) diganti ke 2 nameserver yang dikasih Cloudflare.
