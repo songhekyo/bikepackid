@@ -1,0 +1,4 @@
+# web/index.html is the static waitlist landing page served by the
+# Cloudflare Worker, not part of the Rust services — excluded from
+# GitHub's language stats so the repo still reads as Rust.
+*.html linguist-vendored

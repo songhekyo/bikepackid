@@ -107,6 +107,18 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      # The root cause of a real incident: `docker.sock` only lets
+      # Watchtower drive the host's Docker *Engine API* — it does NOT
+      # inherit the host daemon's stored registry credentials along with
+      # it. Watchtower makes its own registry API calls (to check digests
+      # before deciding whether to pull), and those need their own
+      # `config.json`. Without this mount, every poll silently failed with
+      # "401 Unauthorized" against GHCR (see docs/INFRA_HISTORY.md #13) —
+      # `docker pull` run manually on the host worked fine the whole time
+      # (classic PAT already `docker login`'d there per #12), which is
+      # exactly why this was easy to miss: the host clearly had working
+      # credentials, just not the ones Watchtower itself was using.
+      - ${HOME}/.docker/config.json:/config.json:ro
     environment:
       WATCHTOWER_LABEL_ENABLE: "true"
       WATCHTOWER_POLL_INTERVAL: "300"
