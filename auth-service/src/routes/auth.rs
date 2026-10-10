@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Json, Query, State},
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
 };
@@ -10,7 +10,7 @@ use axum_extra::extract::{
 use chrono::Utc;
 use oauth2::{AuthorizationCode, CsrfToken, PkceCodeChallenge, Scope, TokenResponse};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::Instrument;
 
@@ -171,20 +171,13 @@ pub async fn google_callback(
     .instrument(tracing::info_span!("check_existing_user"))
     .await?;
 
-    let user = sqlx::query_as::<_, User>(
-        r#"
-        INSERT INTO users (google_id, email, name, avatar_url)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (google_id)
-        DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name, avatar_url = EXCLUDED.avatar_url
-        RETURNING *
-        "#,
+    let user = google::upsert_user(
+        &state.db,
+        &google_user.sub,
+        &google_user.email,
+        &google_user.name,
+        google_user.picture.as_deref(),
     )
-    .bind(&google_user.sub)
-    .bind(&google_user.email)
-    .bind(&google_user.name)
-    .bind(&google_user.picture)
-    .fetch_one(&state.db)
     .instrument(tracing::info_span!("upsert_user"))
     .await?;
 
@@ -228,6 +221,62 @@ pub async fn google_callback(
     let jar = CookieJar::new().add(cookie);
 
     Ok((jar, Redirect::to(&state.config.frontend_url)).into_response())
+}
+
+#[derive(Deserialize)]
+pub struct MobileGoogleLoginRequest {
+    id_token: String,
+}
+
+#[derive(Serialize)]
+pub struct MobileGoogleLoginResponse {
+    token: String,
+    user: User,
+}
+
+/// POST /auth/mobile/google — the mobile counterpart to google_login/
+/// google_callback. The app already holds a Google ID token (obtained
+/// on-device via its own Google sign-in), so there's no code-exchange
+/// step: verify it, upsert, create a session, issue the JWT, and hand it
+/// back as JSON — mobile has no cookie jar shared with the web frontend,
+/// so this can't set a cookie the way the web flow does.
+pub async fn mobile_google_login(
+    State(state): State<SharedState>,
+    Json(payload): Json<MobileGoogleLoginRequest>,
+) -> Result<Json<MobileGoogleLoginResponse>, AppError> {
+    let google_user = google::verify_id_token(
+        &state.http_client,
+        &payload.id_token,
+        &state.config.google_client_id,
+    )
+    .instrument(tracing::info_span!("verify_google_id_token"))
+    .await?;
+
+    let user = google::upsert_user(
+        &state.db,
+        &google_user.sub,
+        &google_user.email,
+        &google_user.name,
+        google_user.picture.as_deref(),
+    )
+    .instrument(tracing::info_span!("upsert_user"))
+    .await?;
+
+    let (session_id, expires_at) = session::create(&state.db, user.id).await?;
+    let token = jwt::issue(user.id, user.role, session_id, expires_at, &state.config.jwt_secret);
+
+    if let Err(err) = audit::log(
+        &state.db,
+        Some(user.id),
+        "login",
+        Some(json!({ "method": "google_mobile" })),
+    )
+    .await
+    {
+        tracing::error!(?err, "failed to write login audit log");
+    }
+
+    Ok(Json(MobileGoogleLoginResponse { token, user }))
 }
 
 pub async fn logout(State(state): State<SharedState>, jar: CookieJar) -> impl IntoResponse {

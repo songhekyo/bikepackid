@@ -20,10 +20,24 @@ impl FromRequestParts<SharedState> for AuthUser {
         parts: &mut Parts,
         state: &SharedState,
     ) -> Result<Self, Self::Rejection> {
-        let jar = CookieJar::from_headers(&parts.headers);
-        let token = jar
-            .get(SESSION_COOKIE)
-            .map(|c| c.value().to_string())
+        // Mobile has no cookie jar, so a bearer token is the only way it
+        // can authenticate — checked first, since a client that sends an
+        // explicit Authorization header has stated its credential and
+        // shouldn't silently fall back to an unrelated cookie that happens
+        // to also be present. Every existing (web) caller sends no
+        // Authorization header at all, so this falls straight through to
+        // the cookie below, unchanged from before this existed.
+        let token = parts
+            .headers
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.strip_prefix("Bearer "))
+            .map(str::to_string)
+            .or_else(|| {
+                CookieJar::from_headers(&parts.headers)
+                    .get(SESSION_COOKIE)
+                    .map(|c| c.value().to_string())
+            })
             .ok_or(AppError::Unauthorized)?;
 
         let claims = jwt::verify(&token, &state.config.jwt_secret).ok_or(AppError::Unauthorized)?;

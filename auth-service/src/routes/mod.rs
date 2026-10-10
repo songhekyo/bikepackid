@@ -38,6 +38,7 @@ pub fn router() -> Router<SharedState> {
     let google_oauth_routes = Router::new()
         .route("/auth/google/login", get(auth::google_login))
         .route("/auth/google/callback", get(auth::google_callback))
+        .route("/auth/mobile/google", post(auth::mobile_google_login))
         .layer(GovernorLayer {
             config: governor_conf,
         });
@@ -152,6 +153,146 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+
+        test_support::delete_user(&state.db, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn me_with_a_valid_bearer_token_and_no_cookie_returns_the_user() {
+        let state = test_support::app_state().await;
+        let user_id = test_support::insert_user(&state.db).await;
+        let (session_id, expires_at) = session::create(&state.db, user_id).await.unwrap();
+        let token = jwt::issue(
+            user_id,
+            Role::Viewer,
+            session_id,
+            expires_at,
+            &state.config.jwt_secret,
+        );
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/me")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        test_support::delete_user(&state.db, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn me_with_a_bearer_token_takes_precedence_over_a_cookie() {
+        let state = test_support::app_state().await;
+        let bearer_user_id = test_support::insert_user(&state.db).await;
+        let cookie_user_id = test_support::insert_user(&state.db).await;
+
+        let (bearer_session, bearer_expires) =
+            session::create(&state.db, bearer_user_id).await.unwrap();
+        let bearer_token = jwt::issue(
+            bearer_user_id,
+            Role::Viewer,
+            bearer_session,
+            bearer_expires,
+            &state.config.jwt_secret,
+        );
+
+        // The cookie belongs to a *revoked* session — if the extractor ever
+        // fell back to it instead of using the bearer token, this request
+        // would be unauthorized instead of succeeding as the bearer user.
+        let (cookie_session, cookie_expires) =
+            session::create(&state.db, cookie_user_id).await.unwrap();
+        let cookie_token = jwt::issue(
+            cookie_user_id,
+            Role::Viewer,
+            cookie_session,
+            cookie_expires,
+            &state.config.jwt_secret,
+        );
+        session::revoke(&state.db, cookie_session).await.unwrap();
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/me")
+                    .header("authorization", format!("Bearer {bearer_token}"))
+                    .header("cookie", format!("session={cookie_token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["id"], bearer_user_id.to_string());
+
+        test_support::delete_user(&state.db, bearer_user_id).await;
+        test_support::delete_user(&state.db, cookie_user_id).await;
+    }
+
+    #[tokio::test]
+    async fn me_with_a_malformed_authorization_header_falls_back_to_cookie() {
+        let state = test_support::app_state().await;
+        let user_id = test_support::insert_user(&state.db).await;
+        let cookie = cookie_for(&state, user_id, Role::Viewer).await;
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/me")
+                    .header("authorization", "Token not-a-bearer-token")
+                    .header("cookie", cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        test_support::delete_user(&state.db, user_id).await;
+    }
+
+    #[tokio::test]
+    async fn me_with_a_revoked_bearer_token_is_unauthorized() {
+        let state = test_support::app_state().await;
+        let user_id = test_support::insert_user(&state.db).await;
+
+        let (session_id, expires_at) = session::create(&state.db, user_id).await.unwrap();
+        let token = jwt::issue(
+            user_id,
+            Role::Viewer,
+            session_id,
+            expires_at,
+            &state.config.jwt_secret,
+        );
+        session::revoke(&state.db, session_id).await.unwrap();
+
+        let app = router().with_state(state.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/me")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
         test_support::delete_user(&state.db, user_id).await;
     }
@@ -547,5 +688,28 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn mobile_google_login_rejects_a_body_missing_id_token() {
+        let state = test_support::app_state().await;
+        let app = router().with_state(state);
+
+        // Rejected by the Json extractor itself before the handler ever
+        // runs, so this never reaches Google — no network call happens.
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/mobile/google")
+                    .header("content-type", "application/json")
+                    .header("x-forwarded-for", "203.0.113.80")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     }
 }
